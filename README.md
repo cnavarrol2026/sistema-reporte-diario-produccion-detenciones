@@ -5,8 +5,10 @@ Sistema web para registrar produccion diaria, detenciones por turno, cierres de 
 ## Stack tecnologico
 
 - Frontend: React, Vite, TypeScript, Tailwind en modo navegador por restriccion local de seguridad.
-- Backend: Node.js, TypeScript, Express y servidor local `standalone`.
-- Base de datos: MySQL local con XAMPP.
+- Backend local: Node.js, TypeScript, Express y servidor local `standalone`.
+- Backend nube: Cloudflare Workers con Hyperdrive.
+- Base de datos local: MySQL con XAMPP.
+- Base de datos nube: TiDB Cloud compatible con MySQL.
 - PDF: `pdfkit`.
 - Graficos: `Recharts`.
 
@@ -118,6 +120,30 @@ SOURCE C:/xampp/htdocs/Sistema Web Reporte Diario/reporte-detenciones/database/m
 7. Presionar `Finalizar reporte`.
 8. Descargar el PDF desde `Informes` cuando se necesite.
 9. Revisar historicos y dashboard.
+
+## Despliegue Cloudflare
+
+Frontend:
+
+- Cloudflare Pages.
+- Root directory: `frontend`.
+- Build command: `npm run build`.
+- Build output directory: `dist`.
+
+Backend API:
+
+- Cloudflare Worker definido en `backend/wrangler.toml`.
+- Entry point: `backend/src/worker.ts`.
+- Requiere un binding Hyperdrive llamado `HYPERDRIVE` conectado a TiDB Cloud.
+- Requiere variable `FRONTEND_URL` con la URL publica de Cloudflare Pages.
+
+La URL del Worker debe configurarse en Cloudflare Pages como:
+
+```env
+VITE_API_URL=https://URL-DEL-WORKER/api
+```
+
+Las credenciales reales de TiDB se configuran en Cloudflare/Hyperdrive. No deben guardarse en GitHub.
 
 ## Validaciones principales
 
