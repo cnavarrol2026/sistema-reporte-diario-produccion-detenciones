@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistema Web de Reporte Diario de Produccion y Detenciones</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              industrial: {
+                50: "#f7f9fb",
+                100: "#e7edf3",
+                200: "#cfdbe7",
+                500: "#49667f",
+                700: "#2f465c",
+                900: "#172534"
+              },
+              signal: {
+                mint: "#d9f5e8",
+                sky: "#d9ecfb",
+                amber: "#fff2c7",
+                violet: "#eadffd",
+                slate: "#e4ebf2",
+                orange: "#ffe3ca"
+              }
+            },
+            boxShadow: {
+              panel: "0 16px 40px rgba(23, 37, 52, 0.08)"
+            }
+          }
+        }
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

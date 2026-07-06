@@ -1,0 +1,182 @@
+:root {
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172534;
+  background: #f7f9fb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+a {
+  touch-action: manipulation;
+}
+
+button {
+  font: inherit;
+}
+
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  background-color: #ffffff;
+  color: #172534;
+}
+
+.text-white { color: #ffffff; }
+.bg-white { background-color: #ffffff; }
+
+.bg-industrial-50 { background-color: #f7f9fb; }
+.bg-industrial-100 { background-color: #e7edf3; }
+.bg-industrial-200 { background-color: #cfdbe7; }
+.bg-industrial-500 { background-color: #49667f; }
+.bg-industrial-700 { background-color: #2f465c; }
+.bg-industrial-900 { background-color: #172534; }
+
+.text-industrial-50 { color: #f7f9fb; }
+.text-industrial-100 { color: #e7edf3; }
+.text-industrial-200 { color: #cfdbe7; }
+.text-industrial-500 { color: #49667f; }
+.text-industrial-600 { color: #405a72; }
+.text-industrial-700 { color: #2f465c; }
+.text-industrial-800 { color: #24384b; }
+.text-industrial-900 { color: #172534; }
+
+.border-industrial-50 { border-color: #f7f9fb; }
+.border-industrial-100 { border-color: #e7edf3; }
+.border-industrial-200 { border-color: #cfdbe7; }
+.border-industrial-500 { border-color: #49667f; }
+.border-industrial-700 { border-color: #2f465c; }
+.border-industrial-900 { border-color: #172534; }
+
+.bg-signal-mint { background-color: #d9f5e8; }
+.bg-signal-sky { background-color: #d9ecfb; }
+.bg-signal-amber { background-color: #fff2c7; }
+.bg-signal-violet { background-color: #eadffd; }
+.bg-signal-slate { background-color: #e4ebf2; }
+.bg-signal-orange { background-color: #ffe3ca; }
+
+.shadow-panel {
+  box-shadow: 0 16px 40px rgba(23, 37, 52, 0.08);
+}
+
+.bg-industrial-900\/40 {
+  background-color: rgba(23, 37, 52, 0.45);
+}
+
+.divide-industrial-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #e7edf3;
+}
+
+.app-primary-button,
+.app-success-button {
+  align-items: center;
+  border: 0;
+  border-radius: 0.375rem;
+  box-shadow: 0 1px 2px rgba(23, 37, 52, 0.08);
+  color: #ffffff;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  justify-content: center;
+  min-height: 2.75rem;
+  padding: 0 1rem;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.app-primary-button {
+  background-color: #172534;
+}
+
+.app-primary-button:hover {
+  background-color: #24384b;
+}
+
+.app-success-button {
+  background-color: #047857;
+}
+
+.app-success-button:hover {
+  background-color: #065f46;
+}
+
+.app-primary-button:disabled,
+.app-success-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.app-secondary-button {
+  align-items: center;
+  background-color: #ffffff;
+  border: 1px solid #e7edf3;
+  border-radius: 0.375rem;
+  color: #2f465c;
+  display: inline-flex;
+  font-size: 0.875rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 0.75rem;
+}
+
+.app-secondary-button:hover {
+  background-color: #f7f9fb;
+}
+
+.app-modal-backdrop {
+  align-items: center;
+  background-color: rgba(23, 37, 52, 0.52);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 1.5rem 1rem;
+  position: fixed;
+  z-index: 1000;
+}
+
+.app-modal-panel {
+  background-color: #ffffff;
+  border: 1px solid #e7edf3;
+  border-radius: 0.75rem;
+  box-shadow: 0 24px 80px rgba(23, 37, 52, 0.24);
+  max-height: 92dvh;
+  max-width: 48rem;
+  overflow-y: auto;
+  padding: 1.25rem;
+  width: 100%;
+}
+
+.app-active-nav {
+  background-color: #172534;
+  color: #ffffff;
+}
+
+.app-summary-emphasis {
+  background-color: #172534;
+  border-color: #172534;
+  color: #ffffff;
+}
+
+.hover\:bg-industrial-100:hover { background-color: #e7edf3; }
+.hover\:bg-industrial-800:hover { background-color: #24384b; }
+.hover\:text-industrial-900:hover { color: #172534; }
+.focus\:border-industrial-500:focus { border-color: #49667f; }
+.focus\:ring-industrial-100:focus { --tw-ring-color: #e7edf3; }
+.focus\:ring-industrial-500:focus { --tw-ring-color: #49667f; }
