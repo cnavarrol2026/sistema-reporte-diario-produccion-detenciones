@@ -12,6 +12,7 @@
     "deploy:cloudflare": "wrangler deploy"
   },
   "dependencies": {
+    "@tidbcloud/serverless": "^0.3.0",
     "@types/pdfkit": "^0.17.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
