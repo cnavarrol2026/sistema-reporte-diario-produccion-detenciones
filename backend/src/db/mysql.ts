@@ -47,8 +47,7 @@ async function createWorkerConnection() {
     namedPlaceholders: true,
     disableEval: true,
     ssl: {
-      minVersion: "TLSv1.2",
-      rejectUnauthorized: false
+      minVersion: "TLSv1.2"
     }
   });
 
