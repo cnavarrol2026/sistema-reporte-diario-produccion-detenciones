@@ -2,9 +2,10 @@ import type { Request, Response } from "express";
 import {
   finalizarReporte,
   getInformeReporte,
-  getOrCreateReporteActual,
+  getReporteActual,
   getReporteResumen,
   getReportesFinalizados,
+  iniciarReporteActual,
   updateReporte
 } from "../services/reporteService.js";
 import { generateReportePdfBuffer } from "../services/pdfService.js";
@@ -126,7 +127,11 @@ function parseReporteUpdate(body: Record<string, unknown>): ReporteUpdateInput {
 }
 
 export async function getReporteActualController(_request: Request, response: Response) {
-  response.json(await getOrCreateReporteActual());
+  response.json(await getReporteActual());
+}
+
+export async function iniciarReporteController(_request: Request, response: Response) {
+  response.status(201).json(await iniciarReporteActual());
 }
 
 export async function updateReporteController(request: Request, response: Response) {

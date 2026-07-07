@@ -26,9 +26,10 @@ import { generateReportePdfBuffer } from "./services/pdfService.js";
 import {
   finalizarReporte,
   getInformeReporte,
-  getOrCreateReporteActual,
+  getReporteActual,
   getReporteResumen,
   getReportesFinalizados,
+  iniciarReporteActual,
   updateReporte
 } from "./services/reporteService.js";
 import type { DetencionInput } from "./types/detencion.js";
@@ -261,7 +262,10 @@ async function route(method: Method, url: URL, body: Record<string, unknown>): P
   }
 
   if (parts[0] === "reportes" && parts[1] === "actual" && method === "GET") {
-    return { statusCode: 200, payload: await getOrCreateReporteActual() };
+    return { statusCode: 200, payload: await getReporteActual() };
+  }
+  if (parts[0] === "reportes" && parts[1] === "iniciar" && method === "POST") {
+    return { statusCode: 201, payload: await iniciarReporteActual() };
   }
   if (parts[0] === "reportes" && parts[1] === "finalizados" && method === "GET") {
     return { statusCode: 200, payload: await getReportesFinalizados(parseFinalizadosFilters(url)) };

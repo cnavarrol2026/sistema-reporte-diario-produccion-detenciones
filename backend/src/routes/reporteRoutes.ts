@@ -11,6 +11,7 @@ import {
   getInformeReporteController,
   getReporteActualController,
   getReporteResumenController,
+  iniciarReporteController,
   listReportesFinalizadosController,
   updateReporteController
 } from "../controllers/reporteController.js";
@@ -19,6 +20,7 @@ import { asyncHandler } from "./asyncHandler.js";
 export const reporteRoutes = Router();
 
 reporteRoutes.get("/reportes/actual", asyncHandler(getReporteActualController));
+reporteRoutes.post("/reportes/iniciar", asyncHandler(iniciarReporteController));
 reporteRoutes.get("/reportes/finalizados", asyncHandler(listReportesFinalizadosController));
 reporteRoutes.get("/reportes", asyncHandler(listReportesFinalizadosController));
 reporteRoutes.get("/reportes/:id/informe", asyncHandler(getInformeReporteController));

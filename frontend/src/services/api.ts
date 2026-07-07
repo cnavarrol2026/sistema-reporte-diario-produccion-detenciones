@@ -298,7 +298,11 @@ export function fetchHealth() {
 }
 
 export function fetchReporteActual() {
-  return requestJson<Reporte>("/reportes/actual");
+  return requestJson<Reporte | null>("/reportes/actual");
+}
+
+export function iniciarReporte() {
+  return requestJson<Reporte>("/reportes/iniciar", { method: "POST" });
 }
 
 export function updateReporte(id: number, input: ReporteUpdateInput) {

@@ -24,9 +24,10 @@ import { generateReportePdfBuffer } from "./services/pdfService.js";
 import {
   finalizarReporte,
   getInformeReporte,
-  getOrCreateReporteActual,
+  getReporteActual,
   getReporteResumen,
   getReportesFinalizados,
+  iniciarReporteActual,
   updateReporte
 } from "./services/reporteService.js";
 import type { DashboardFilters } from "./types/dashboard.js";
@@ -217,7 +218,10 @@ export async function routeApi(method: Method, url: URL, body: Record<string, un
   }
 
   if (parts[0] === "reportes" && parts[1] === "actual" && method === "GET") {
-    return { statusCode: 200, payload: await getOrCreateReporteActual() };
+    return { statusCode: 200, payload: await getReporteActual() };
+  }
+  if (parts[0] === "reportes" && parts[1] === "iniciar" && method === "POST") {
+    return { statusCode: 201, payload: await iniciarReporteActual() };
   }
   if (parts[0] === "reportes" && parts[1] === "finalizados" && method === "GET") {
     return { statusCode: 200, payload: await getReportesFinalizados(parseFinalizadosFilters(url)) };

@@ -123,14 +123,17 @@ async function getPrimerLineaActivaId() {
   return rows[0].id;
 }
 
-export async function getOrCreateReporteActual() {
+export async function getReporteActual() {
   const [openRows] = await pool.query<ReporteRow[]>(
     `${reporteSelectSql("WHERE r.estado = 'abierto'")} ORDER BY r.created_at DESC LIMIT 1`
   );
 
-  if (openRows[0]) {
-    return openRows[0];
-  }
+  return openRows[0] ?? null;
+}
+
+export async function iniciarReporteActual() {
+  const current = await getReporteActual();
+  if (current) return current;
 
   const lineaId = await getPrimerLineaActivaId();
   const [result] = await pool.execute<ResultSetHeader>(

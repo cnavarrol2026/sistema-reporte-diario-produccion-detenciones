@@ -50,6 +50,7 @@ import {
   fetchReportesFinalizados,
   finalizarReporte,
   downloadReportePdf,
+  iniciarReporte,
   updateIndicador,
   updateDetencion,
   updateLinea,
@@ -221,8 +222,17 @@ export function App() {
       setHealth(healthResponse);
       setConfiguration(configurationResponse);
       setReporte(reporteResponse);
-      setReporteForm(reporteToForm(reporteResponse));
-      lastReportSignature.current = JSON.stringify(reporteToPayload(reporteToForm(reporteResponse)));
+      if (!reporteResponse) {
+        setReporteForm(emptyReporteForm);
+        setDetenciones([]);
+        setReporteResumen(null);
+        lastReportSignature.current = "";
+        return;
+      }
+
+      const nextForm = reporteToForm(reporteResponse);
+      setReporteForm(nextForm);
+      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
       const [detencionesResponse, resumenResponse] = await Promise.all([
         fetchDetenciones(reporteResponse.id),
         fetchReporteResumen(reporteResponse.id)
@@ -347,6 +357,28 @@ export function App() {
     }
   }
 
+  async function startNewReporte() {
+    setIsSaving(true);
+    setReportSaveStatus("idle");
+    setError(null);
+    setMessage("Iniciando reporte...");
+    try {
+      const nextReporte = await iniciarReporte();
+      const nextForm = reporteToForm(nextReporte);
+      setReporte(nextReporte);
+      setReporteForm(nextForm);
+      setDetenciones([]);
+      setReporteResumen(await fetchReporteResumen(nextReporte.id));
+      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
+      setMessage("Reporte iniciado correctamente");
+    } catch (startError) {
+      setError(startError instanceof Error ? startError.message : "No fue posible iniciar el reporte.");
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function finalizeCurrentReporte() {
     if (!reporte) return;
     setIsSaving(true);
@@ -354,6 +386,11 @@ export function App() {
     setMessage("Finalizando reporte...");
     setError(null);
     try {
+      const missingGeneralFields = validateReporteGeneralFields(reporteForm);
+      if (missingGeneralFields.length > 0) {
+        throw new Error(`No se puede finalizar el reporte. Faltan datos obligatorios:\n- ${missingGeneralFields.join("\n- ")}`);
+      }
+
       const payload = reporteToPayload(reporteForm);
       const signature = JSON.stringify(payload);
       if (signature !== lastReportSignature.current && reporte.estado !== "finalizado") {
@@ -362,11 +399,13 @@ export function App() {
       }
 
       const finalized: ReporteFinalizadoResponse = await finalizarReporte(reporte.id);
-      setReporte(finalized.reporte);
-      setReporteResumen(finalized.resumen);
+      setReporte(null);
+      setReporteResumen(null);
+      setReporteForm(emptyReporteForm);
+      setDetenciones([]);
+      lastReportSignature.current = "";
       setReportSaveStatus("saved");
-      setMessage("Reporte finalizado correctamente. El PDF queda disponible en Informes.");
-      await loadDashboardData(showInactive);
+      setMessage(`Reporte ${finalized.reporte.id} finalizado correctamente. El PDF queda disponible en Informes.`);
       await loadInformes();
     } catch (finalizeError) {
       setReportSaveStatus("error");
@@ -516,6 +555,7 @@ export function App() {
           onFinalizeReporte={finalizeCurrentReporte}
           onSaveDetencion={saveDetencion}
           onFormChange={setReporteForm}
+          onStartReporte={startNewReporte}
           reportSaveStatus={reportSaveStatus}
           reporte={reporte}
           reporteForm={reporteForm}
@@ -1247,6 +1287,7 @@ function ReporteDiaView({
   onFinalizeReporte,
   onFormChange,
   onSaveDetencion,
+  onStartReporte,
   reportSaveStatus,
   reporte,
   reporteForm,
@@ -1260,6 +1301,7 @@ function ReporteDiaView({
   onFinalizeReporte: () => Promise<void>;
   onFormChange: (form: ReporteFormState) => void;
   onSaveDetencion: (input: DetencionInput, detencionId?: number) => Promise<void>;
+  onStartReporte: () => Promise<void>;
   reportSaveStatus: "idle" | "saving" | "saved" | "error";
   reporte: Reporte | null;
   reporteForm: ReporteFormState;
@@ -1294,6 +1336,50 @@ function ReporteDiaView({
       imagen_reporte_mime: file.type,
       imagen_reporte_nombre: file.name
     });
+  }
+
+  if (!reporte) {
+    return (
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="rounded-lg border border-industrial-100 bg-white p-6 shadow-panel">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-industrial-500">Reporte del dia</p>
+              <h2 className="mt-1 text-xl font-semibold text-industrial-900">No hay reporte abierto</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-industrial-600">
+                El reporte anterior puede quedar finalizado sin abrir otro automaticamente. Inicia uno nuevo solo cuando comience una nueva jornada real de registro.
+              </p>
+            </div>
+            <button
+              className="app-primary-button inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-industrial-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-industrial-800 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isSaving}
+              onClick={onStartReporte}
+              type="button"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Iniciar nuevo reporte
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase text-industrial-500">Estado</p>
+            <p className="mt-2 text-lg font-semibold text-industrial-900">Sin reporte abierto</p>
+          </div>
+          <div className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase text-industrial-500">Siguiente accion</p>
+            <p className="mt-2 text-lg font-semibold text-industrial-900">Iniciar cuando corresponda</p>
+          </div>
+          <div className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+            <p className="text-xs font-semibold uppercase text-industrial-500">Turno actual</p>
+            <p className="mt-2 text-lg font-semibold text-industrial-900">
+              {turnoActual ? `${turnoActual.turno_nombre} (${turnoActual.hora_inicio}-${turnoActual.hora_fin})` : "N/A"}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -2529,6 +2615,22 @@ function reporteToForm(reporte: Reporte): ReporteFormState {
     imagen_reporte_mime: reporte.imagen_reporte_mime ?? "",
     imagen_reporte_nombre: reporte.imagen_reporte_nombre ?? ""
   };
+}
+
+function validateReporteGeneralFields(form: ReporteFormState) {
+  const missing: string[] = [];
+
+  if (!form.linea_id) missing.push("Linea seleccionada");
+  if (!form.opinona_planificada.trim()) missing.push("OPINONA planificada");
+  if (!form.opinona_real.trim()) missing.push("OPINONA real");
+  if (!form.producciones_programadas.trim()) missing.push("Producciones programadas");
+  if (!form.producciones_realizadas.trim()) missing.push("Producciones realizadas");
+  if (!form.tipo_atraso_adelanto) missing.push("Tipo atraso/adelanto");
+  if (!form.minutos_atraso_adelanto.trim()) missing.push("Minutos atraso/adelanto");
+  if (!form.observacion_general.trim()) missing.push("Observacion general");
+  if (!form.imagen_reporte_data) missing.push("Captura OPINONA JPG/PNG");
+
+  return missing;
 }
 
 function reporteToPayload(form: ReporteFormState): ReporteUpdateInput {
