@@ -6,7 +6,7 @@ Sistema web para registrar produccion diaria, detenciones por turno, cierres de 
 
 - Frontend: React, Vite, TypeScript, Tailwind en modo navegador por restriccion local de seguridad.
 - Backend local: Node.js, TypeScript, Express y servidor local `standalone`.
-- Backend nube: Cloudflare Workers con Hyperdrive.
+- Backend nube: Cloudflare Workers con variables de conexion TiDB.
 - Base de datos local: MySQL con XAMPP.
 - Base de datos nube: TiDB Cloud compatible con MySQL.
 - PDF: `pdfkit`.
@@ -134,7 +134,7 @@ Backend API:
 
 - Cloudflare Worker definido en `backend/wrangler.toml`.
 - Entry point: `backend/src/worker.ts`.
-- Requiere un binding Hyperdrive llamado `HYPERDRIVE` conectado a TiDB Cloud.
+- Requiere variables `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
 - Requiere variable `FRONTEND_URL` con la URL publica de Cloudflare Pages.
 
 La URL del Worker debe configurarse en Cloudflare Pages como:
@@ -143,7 +143,7 @@ La URL del Worker debe configurarse en Cloudflare Pages como:
 VITE_API_URL=https://URL-DEL-WORKER/api
 ```
 
-Las credenciales reales de TiDB se configuran en Cloudflare/Hyperdrive. No deben guardarse en GitHub.
+Las credenciales reales de TiDB se configuran en Cloudflare como variables/secretos. No deben guardarse en GitHub.
 
 ## Validaciones principales
 

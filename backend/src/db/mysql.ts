@@ -1,6 +1,6 @@
 import mysql, { type Pool } from "mysql2/promise";
 
-type HyperdriveBinding = {
+type WorkerDatabaseEnv = {
   host: string;
   user: string;
   password: string;
@@ -9,10 +9,10 @@ type HyperdriveBinding = {
 };
 
 let localPool: Pool | null = null;
-let hyperdriveBinding: HyperdriveBinding | null = null;
+let workerDatabaseEnv: WorkerDatabaseEnv | null = null;
 
-export function configureHyperdriveDatabase(binding: HyperdriveBinding) {
-  hyperdriveBinding = binding;
+export function configureWorkerDatabase(env: WorkerDatabaseEnv) {
+  workerDatabaseEnv = env;
 }
 
 function getLocalPool() {
@@ -33,19 +33,23 @@ function getLocalPool() {
   return localPool;
 }
 
-async function createHyperdriveConnection() {
-  if (!hyperdriveBinding) {
-    throw new Error("Hyperdrive no esta configurado");
+async function createWorkerConnection() {
+  if (!workerDatabaseEnv) {
+    throw new Error("La base de datos del Worker no esta configurada");
   }
 
   const connection = await mysql.createConnection({
-    host: hyperdriveBinding.host,
-    user: hyperdriveBinding.user,
-    password: hyperdriveBinding.password,
-    database: hyperdriveBinding.database,
-    port: hyperdriveBinding.port,
+    host: workerDatabaseEnv.host,
+    user: workerDatabaseEnv.user,
+    password: workerDatabaseEnv.password,
+    database: workerDatabaseEnv.database,
+    port: workerDatabaseEnv.port,
     namedPlaceholders: true,
-    disableEval: true
+    disableEval: true,
+    ssl: {
+      minVersion: "TLSv1.2",
+      rejectUnauthorized: true
+    }
   });
 
   return Object.assign(connection, {
@@ -55,8 +59,8 @@ async function createHyperdriveConnection() {
   });
 }
 
-async function withConnection<T>(callback: (connection: Awaited<ReturnType<typeof createHyperdriveConnection>>) => Promise<T>) {
-  const connection = await createHyperdriveConnection();
+async function withConnection<T>(callback: (connection: Awaited<ReturnType<typeof createWorkerConnection>>) => Promise<T>) {
+  const connection = await createWorkerConnection();
   try {
     return await callback(connection);
   } finally {
@@ -66,16 +70,16 @@ async function withConnection<T>(callback: (connection: Awaited<ReturnType<typeo
 
 export const pool = {
   query: async (...args: Parameters<Pool["query"]>) => {
-    if (!hyperdriveBinding) return getLocalPool().query(...args);
+    if (!workerDatabaseEnv) return getLocalPool().query(...args);
     return withConnection((connection) => connection.query(...args));
   },
   execute: async (...args: Parameters<Pool["execute"]>) => {
-    if (!hyperdriveBinding) return getLocalPool().execute(...args);
+    if (!workerDatabaseEnv) return getLocalPool().execute(...args);
     return withConnection((connection) => connection.execute(...args));
   },
   getConnection: async () => {
-    if (!hyperdriveBinding) return getLocalPool().getConnection();
-    return createHyperdriveConnection();
+    if (!workerDatabaseEnv) return getLocalPool().getConnection();
+    return createWorkerConnection();
   }
 } as unknown as Pool;
 

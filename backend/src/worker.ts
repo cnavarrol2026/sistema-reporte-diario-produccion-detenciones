@@ -1,17 +1,13 @@
 import { URL } from "node:url";
-import { configureHyperdriveDatabase } from "./db/mysql.js";
+import { configureWorkerDatabase } from "./db/mysql.js";
 import { routeApi, type Method } from "./apiRouter.js";
 
-type HyperdriveBinding = {
-  host: string;
-  user: string;
-  password: string;
-  database: string;
-  port: number;
-};
-
 type WorkerEnv = {
-  HYPERDRIVE?: HyperdriveBinding;
+  DB_HOST?: string;
+  DB_PORT?: string;
+  DB_USER?: string;
+  DB_PASSWORD?: string;
+  DB_NAME?: string;
   FRONTEND_URL?: string;
 };
 
@@ -72,11 +68,17 @@ export default {
     }
 
     try {
-      if (!env.HYPERDRIVE) {
-        throw Object.assign(new Error("Falta configurar el binding HYPERDRIVE en Cloudflare"), { statusCode: 500 });
+      if (!env.DB_HOST || !env.DB_USER || !env.DB_PASSWORD || !env.DB_NAME) {
+        throw Object.assign(new Error("Faltan variables DB_HOST, DB_USER, DB_PASSWORD o DB_NAME en Cloudflare"), { statusCode: 500 });
       }
 
-      configureHyperdriveDatabase(env.HYPERDRIVE);
+      configureWorkerDatabase({
+        host: env.DB_HOST,
+        port: Number(env.DB_PORT ?? 4000),
+        user: env.DB_USER,
+        password: env.DB_PASSWORD,
+        database: env.DB_NAME
+      });
 
       const url = normalizeApiUrl(request);
       const body = await readBody(request);

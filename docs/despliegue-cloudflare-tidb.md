@@ -45,27 +45,21 @@ compatibility_date = "2026-07-06"
 compatibility_flags = ["nodejs_compat"]
 ```
 
-## Hyperdrive
+## Variables del Worker
 
-Crear un Hyperdrive en Cloudflare conectado a TiDB:
+Hyperdrive no se usa para TiDB en este proyecto porque no soporta el mecanismo de autenticacion `MySQL AuthSwitchRequest` usado por TiDB Cloud.
 
-```text
-Host: gateway01.us-east-1.prod.aws.tidbcloud.com
-Port: 4000
-Database: reporte_detenciones
-Username: usuario TiDB
-Password: password TiDB guardado
-```
-
-En el Worker agregar binding:
+Configurar estas variables en el Worker:
 
 ```text
-Variable name: HYPERDRIVE
-Type: Hyperdrive
-Value: configuracion Hyperdrive creada
+DB_HOST=gateway01.us-east-1.prod.aws.tidbcloud.com
+DB_PORT=4000
+DB_USER=usuario TiDB
+DB_PASSWORD=password TiDB guardado
+DB_NAME=reporte_detenciones
 ```
 
-Tambien agregar variable:
+Tambien configurar:
 
 ```env
 FRONTEND_URL=https://sistema-reporte-diario-produccion-detenciones.pages.dev
