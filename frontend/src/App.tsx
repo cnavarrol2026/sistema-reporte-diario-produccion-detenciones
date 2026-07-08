@@ -210,6 +210,27 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const lastReportSignature = useRef("");
 
+  async function applyReporteActual(reporteResponse: Reporte | null) {
+    setReporte(reporteResponse);
+    if (!reporteResponse) {
+      setReporteForm(emptyReporteForm);
+      setDetenciones([]);
+      setReporteResumen(null);
+      lastReportSignature.current = "";
+      return;
+    }
+
+    const nextForm = reporteToForm(reporteResponse);
+    setReporteForm(nextForm);
+    lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
+    const [detencionesResponse, resumenResponse] = await Promise.all([
+      fetchDetenciones(reporteResponse.id),
+      fetchReporteResumen(reporteResponse.id)
+    ]);
+    setDetenciones(detencionesResponse);
+    setReporteResumen(resumenResponse);
+  }
+
   async function loadDashboardData(incluirInactivas = showInactive) {
     setIsLoading(true);
     setError(null);
@@ -221,26 +242,21 @@ export function App() {
       ]);
       setHealth(healthResponse);
       setConfiguration(configurationResponse);
-      setReporte(reporteResponse);
-      if (!reporteResponse) {
-        setReporteForm(emptyReporteForm);
-        setDetenciones([]);
-        setReporteResumen(null);
-        lastReportSignature.current = "";
-        return;
-      }
-
-      const nextForm = reporteToForm(reporteResponse);
-      setReporteForm(nextForm);
-      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
-      const [detencionesResponse, resumenResponse] = await Promise.all([
-        fetchDetenciones(reporteResponse.id),
-        fetchReporteResumen(reporteResponse.id)
-      ]);
-      setDetenciones(detencionesResponse);
-      setReporteResumen(resumenResponse);
+      await applyReporteActual(reporteResponse);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "No fue posible cargar los datos iniciales.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function refreshReporteActual() {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await applyReporteActual(await fetchReporteActual());
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "No fue posible cargar el reporte del dia.");
     } finally {
       setIsLoading(false);
     }
@@ -407,6 +423,7 @@ export function App() {
       setReportSaveStatus("saved");
       setMessage(`Reporte ${finalized.reporte.id} finalizado correctamente. El PDF queda disponible en Informes.`);
       await loadInformes();
+      setActiveSection("informes");
     } catch (finalizeError) {
       setReportSaveStatus("error");
       setError(finalizeError instanceof Error ? finalizeError.message : "Error al finalizar reporte");
@@ -482,6 +499,9 @@ export function App() {
     }
     if (activeSection === "dashboard") {
       loadDashboard();
+    }
+    if (activeSection === "reporte") {
+      refreshReporteActual();
     }
   }, [activeSection]);
 
