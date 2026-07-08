@@ -209,6 +209,7 @@ export function App() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lastReportSignature = useRef("");
+  const reporteRequestVersion = useRef(0);
 
   async function applyReporteActual(reporteResponse: Reporte | null) {
     setReporte(reporteResponse);
@@ -232,6 +233,7 @@ export function App() {
   }
 
   async function loadDashboardData(incluirInactivas = showInactive) {
+    const requestVersion = ++reporteRequestVersion.current;
     setIsLoading(true);
     setError(null);
     try {
@@ -242,6 +244,7 @@ export function App() {
       ]);
       setHealth(healthResponse);
       setConfiguration(configurationResponse);
+      if (requestVersion !== reporteRequestVersion.current) return;
       await applyReporteActual(reporteResponse);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "No fue posible cargar los datos iniciales.");
@@ -251,10 +254,13 @@ export function App() {
   }
 
   async function refreshReporteActual() {
+    const requestVersion = ++reporteRequestVersion.current;
     setIsLoading(true);
     setError(null);
     try {
-      await applyReporteActual(await fetchReporteActual());
+      const reporteResponse = await fetchReporteActual();
+      if (requestVersion !== reporteRequestVersion.current) return;
+      await applyReporteActual(reporteResponse);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "No fue posible cargar el reporte del dia.");
     } finally {
@@ -374,18 +380,16 @@ export function App() {
   }
 
   async function startNewReporte() {
+    const requestVersion = ++reporteRequestVersion.current;
     setIsSaving(true);
     setReportSaveStatus("idle");
     setError(null);
     setMessage("Iniciando reporte...");
     try {
       const nextReporte = await iniciarReporte();
-      const nextForm = reporteToForm(nextReporte);
-      setReporte(nextReporte);
-      setReporteForm(nextForm);
-      setDetenciones([]);
-      setReporteResumen(await fetchReporteResumen(nextReporte.id));
-      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
+      if (!nextReporte) throw new Error("No fue posible iniciar el reporte.");
+      if (requestVersion !== reporteRequestVersion.current) return;
+      await applyReporteActual(nextReporte);
       setMessage("Reporte iniciado correctamente");
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "No fue posible iniciar el reporte.");
