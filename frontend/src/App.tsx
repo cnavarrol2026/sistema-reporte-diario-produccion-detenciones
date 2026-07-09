@@ -1212,9 +1212,6 @@ function ReporteDiaView({
             <div>
               <p className="text-sm font-semibold text-industrial-500">Reporte del dia</p>
               <h2 className="mt-1 text-xl font-semibold text-industrial-900">No hay reporte abierto</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-industrial-600">
-                El reporte anterior puede quedar finalizado sin abrir otro automaticamente. Inicia uno nuevo solo cuando comience una nueva jornada real de registro.
-              </p>
             </div>
             <button
               className="app-primary-button inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-industrial-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-industrial-800 disabled:cursor-not-allowed disabled:opacity-50"
@@ -2710,14 +2707,25 @@ function buildLiveSummary(
     indicador.minutos += minutos;
     porIndicador.set(detencion.indicador_id, indicador);
 
-    const turno = porTurno.get(detencion.turno_id) ?? {
-      id: detencion.turno_id,
-      codigo: detencion.turno_codigo,
-      nombre: detencion.turno_nombre,
-      minutos: 0
-    };
-    turno.minutos += minutos;
-    porTurno.set(detencion.turno_id, turno);
+    const minutosPorTurno = splitDetencionMinutesByTurno(detencion, reporteFecha, liveNow, configuration?.horarios ?? []);
+    if (minutosPorTurno.size === 0) {
+      const turno = porTurno.get(detencion.turno_id) ?? {
+        id: detencion.turno_id,
+        codigo: detencion.turno_codigo,
+        nombre: detencion.turno_nombre,
+        minutos: 0
+      };
+      turno.minutos += minutos;
+      porTurno.set(detencion.turno_id, turno);
+    } else {
+      for (const [turnoId, turnoMinutos] of minutosPorTurno) {
+        const turno = porTurno.get(turnoId);
+        if (turno) {
+          turno.minutos += turnoMinutos;
+          porTurno.set(turnoId, turno);
+        }
+      }
+    }
   }
 
   return {
@@ -2780,7 +2788,13 @@ function minutesBetween(start: Date, end: Date) {
 }
 
 function getDetencionLiveMinutes(detencion: Detencion, reporteFecha: string | undefined, liveNow: Date) {
-  if (!reporteFecha) return detencion.minutos_calculados;
+  const interval = getDetencionInterval(detencion, reporteFecha, liveNow);
+  if (!interval) return detencion.minutos_calculados;
+  return minutesBetween(interval.start, interval.end);
+}
+
+function getDetencionInterval(detencion: Detencion, reporteFecha: string | undefined, liveNow: Date) {
+  if (!reporteFecha) return null;
 
   let start = buildDateTimeFromReport(reporteFecha, detencion.hora_inicio);
   if (detencion.estado_calculado === "abierta" && start.getTime() > liveNow.getTime()) {
@@ -2788,14 +2802,48 @@ function getDetencionLiveMinutes(detencion: Detencion, reporteFecha: string | un
   }
 
   if (!detencion.hora_fin) {
-    return minutesBetween(start, liveNow);
+    return { start, end: liveNow };
   }
 
   let end = buildDateTimeFromReport(reporteFecha, detencion.hora_fin);
   if (end.getTime() < start.getTime()) {
     end = nextDate(end);
   }
-  return minutesBetween(start, end);
+  return { start, end };
+}
+
+function splitDetencionMinutesByTurno(detencion: Detencion, reporteFecha: string | undefined, liveNow: Date, horarios: TurnoHorario[]) {
+  const interval = getDetencionInterval(detencion, reporteFecha, liveNow);
+  const result = new Map<number, number>();
+  if (!interval || interval.end.getTime() <= interval.start.getTime()) return result;
+
+  const cursor = new Date(interval.start);
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() - 1);
+
+  for (let dayOffset = 0; dayOffset < 4; dayOffset += 1) {
+    const currentDate = new Date(cursor);
+    currentDate.setDate(cursor.getDate() + dayOffset);
+    const isoDay = getIsoDay(currentDate);
+
+    for (const horario of horarios) {
+      if (!horario.activo || horario.dia_semana !== isoDay) continue;
+      const shiftStart = buildDateTimeFromReport(dateInputValue(currentDate), horario.hora_inicio);
+      let shiftEnd = buildDateTimeFromReport(dateInputValue(currentDate), horario.hora_fin);
+      if (horario.cruza_medianoche || shiftEnd.getTime() <= shiftStart.getTime()) {
+        shiftEnd = nextDate(shiftEnd);
+      }
+
+      const overlapStart = new Date(Math.max(interval.start.getTime(), shiftStart.getTime()));
+      const overlapEnd = new Date(Math.min(interval.end.getTime(), shiftEnd.getTime()));
+      const minutes = minutesBetween(overlapStart, overlapEnd);
+      if (minutes > 0) {
+        result.set(horario.turno_id, (result.get(horario.turno_id) ?? 0) + minutes);
+      }
+    }
+  }
+
+  return result;
 }
 
 function getTurnoForReportTime(horarios: TurnoHorario[], fechaReporte: string, horaInicio: string) {

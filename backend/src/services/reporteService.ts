@@ -19,6 +19,13 @@ type DetencionFinalizacionRow = RowDataPacket & {
   descripcion: string | null;
 };
 type ReporteFinalizadoListRow = ReporteFinalizadoListItem & RowDataPacket;
+type TurnoHorarioCalculoRow = RowDataPacket & {
+  turno_id: number;
+  dia_semana: number;
+  hora_inicio: string;
+  hora_fin: string;
+  cruza_medianoche: number | boolean;
+};
 
 function toDbTipo(tipo: TipoAtrasoAdelanto) {
   return tipo === "Adelanto" ? "adelanto" : "atraso";
@@ -39,6 +46,102 @@ function getSantiagoDateValue() {
     year: "numeric"
   });
   return formatter.format(new Date());
+}
+
+function pad(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function dateInputValue(date: Date) {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function parseDateTime(fecha: string, hora: string) {
+  const parsed = new Date(`${fecha}T${hora}:00`);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function nextDate(date: Date) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + 1);
+  return copy;
+}
+
+function previousDate(date: Date) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() - 1);
+  return copy;
+}
+
+function getIsoDay(date: Date) {
+  const day = date.getDay();
+  return day === 0 ? 7 : day;
+}
+
+function minutesBetween(start: Date, end: Date) {
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000));
+}
+
+function getDetencionInterval(fechaReporte: string, detencion: { hora_inicio: string | null; hora_fin: string | null; estado_calculado?: string }) {
+  if (!detencion.hora_inicio) return null;
+  let start = parseDateTime(fechaReporte, detencion.hora_inicio);
+  if (!start) return null;
+  const now = new Date();
+
+  if (!detencion.hora_fin) {
+    if (detencion.estado_calculado === "abierta" && start.getTime() > now.getTime()) {
+      start = previousDate(start);
+    }
+    return { start, end: now };
+  }
+
+  let end = parseDateTime(fechaReporte, detencion.hora_fin);
+  if (!end) return null;
+  if (end.getTime() < start.getTime()) {
+    end = nextDate(end);
+  }
+  return { start, end };
+}
+
+function splitMinutesByTurno(
+  fechaReporte: string,
+  detencion: { turno_id: number; hora_inicio: string | null; hora_fin: string | null; estado_calculado?: string },
+  horarios: TurnoHorarioCalculoRow[]
+) {
+  const interval = getDetencionInterval(fechaReporte, detencion);
+  const result = new Map<number, number>();
+  if (!interval || interval.end.getTime() <= interval.start.getTime()) return result;
+
+  const cursor = new Date(interval.start);
+  cursor.setHours(0, 0, 0, 0);
+  cursor.setDate(cursor.getDate() - 1);
+
+  for (let dayOffset = 0; dayOffset < 4; dayOffset += 1) {
+    const currentDate = new Date(cursor);
+    currentDate.setDate(cursor.getDate() + dayOffset);
+    const isoDay = getIsoDay(currentDate);
+
+    for (const horario of horarios) {
+      if (Number(horario.dia_semana) !== isoDay) continue;
+
+      const shiftStart = parseDateTime(dateInputValue(currentDate), horario.hora_inicio);
+      let shiftEnd = parseDateTime(dateInputValue(currentDate), horario.hora_fin);
+      if (!shiftStart || !shiftEnd) continue;
+      if (Number(horario.cruza_medianoche) === 1 || shiftEnd.getTime() <= shiftStart.getTime()) {
+        shiftEnd = nextDate(shiftEnd);
+      }
+
+      const overlapStart = new Date(Math.max(interval.start.getTime(), shiftStart.getTime()));
+      const overlapEnd = new Date(Math.min(interval.end.getTime(), shiftEnd.getTime()));
+      const minutes = minutesBetween(overlapStart, overlapEnd);
+      if (minutes > 0) {
+        result.set(horario.turno_id, (result.get(horario.turno_id) ?? 0) + minutes);
+      }
+    }
+  }
+
+  return result;
 }
 
 function reporteSelectSql(whereClause: string) {
@@ -270,6 +373,12 @@ export async function getReporteResumen(id: number) {
   const [turnos] = await pool.query<(RowDataPacket & { id: number; codigo: string; nombre: string })[]>(
     "SELECT id, codigo, nombre FROM turnos WHERE activo = 1 ORDER BY codigo"
   );
+  const [horarios] = await pool.query<TurnoHorarioCalculoRow[]>(
+    `SELECT turno_id, dia_semana, TIME_FORMAT(hora_inicio, '%H:%i') AS hora_inicio,
+      TIME_FORMAT(hora_fin, '%H:%i') AS hora_fin, cruza_medianoche
+    FROM turno_horarios
+    WHERE activo = 1`
+  );
   const detenciones = await getDetencionesByReporteId(id);
 
   const minutosPorIndicador = new Map(indicadores.map((indicador) => [indicador.id, 0]));
@@ -285,7 +394,14 @@ export async function getReporteResumen(id: number) {
         : Number(detencion.minutos_calculados ?? 0);
     totalMinutos += minutos;
     minutosPorIndicador.set(detencion.indicador_id, (minutosPorIndicador.get(detencion.indicador_id) ?? 0) + minutos);
-    minutosPorTurno.set(detencion.turno_id, (minutosPorTurno.get(detencion.turno_id) ?? 0) + minutos);
+    const minutosRepartidos = splitMinutesByTurno(reporte.fecha_reporte, detencion, horarios);
+    if (minutosRepartidos.size === 0) {
+      minutosPorTurno.set(detencion.turno_id, (minutosPorTurno.get(detencion.turno_id) ?? 0) + minutos);
+    } else {
+      for (const [turnoId, turnoMinutos] of minutosRepartidos) {
+        minutosPorTurno.set(turnoId, (minutosPorTurno.get(turnoId) ?? 0) + turnoMinutos);
+      }
+    }
     if (detencion.estado_calculado === "abierta") abiertas += 1;
   }
 
