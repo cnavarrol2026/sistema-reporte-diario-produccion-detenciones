@@ -375,26 +375,10 @@ export function App() {
     setError(null);
     setMessage("Iniciando reporte...");
     try {
-      const nextReporte = await iniciarReporte(fechaReporte);
+      const nextReporte = await iniciarReporte(fechaReporte) ?? await fetchReporteActual();
       if (!nextReporte) throw new Error("No fue posible iniciar el reporte.");
       if (requestVersion !== reporteRequestVersion.current) return;
-      const nextForm = reporteToForm(nextReporte);
-      setReporte(nextReporte);
-      setReporteForm(nextForm);
-      setDetenciones([]);
-      setReporteResumen(null);
-      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
-      try {
-        const [detencionesResponse, resumenResponse] = await Promise.all([
-          fetchDetenciones(nextReporte.id),
-          fetchReporteResumen(nextReporte.id)
-        ]);
-        if (requestVersion !== reporteRequestVersion.current) return;
-        setDetenciones(detencionesResponse);
-        setReporteResumen(resumenResponse);
-      } catch {
-        setError("Reporte iniciado, pero no fue posible cargar el resumen. Actualice la pagina si los totales no aparecen.");
-      }
+      await applyReporteActual(nextReporte);
       setMessage("Reporte iniciado correctamente");
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "No fue posible iniciar el reporte.");

@@ -171,7 +171,16 @@ export async function iniciarReporteActual(input: { fecha_reporte?: string } = {
     [fechaReporte, lineaId]
   );
 
-  return getReporteById(result.insertId);
+  if (result.insertId) {
+    const created = await getReporteById(result.insertId);
+    if (created) return created;
+  }
+
+  const created = await getReporteActual();
+  if (!created) {
+    throw Object.assign(new Error("El reporte fue creado, pero no fue posible recuperarlo"), { statusCode: 500 });
+  }
+  return created;
 }
 
 export async function updateReporte(id: number, input: ReporteUpdateInput) {
