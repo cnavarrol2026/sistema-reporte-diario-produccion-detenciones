@@ -40,6 +40,7 @@ import {
   deactivateTurno,
   deactivateTurnoHorario,
   deleteDetencion,
+  downloadDatabaseBackup,
   fetchDashboard,
   fetchHealth,
   fetchDetenciones,
@@ -87,10 +88,9 @@ interface ConfigurationState {
   horarios: TurnoHorario[];
 }
 
-type SectionKey = "inicio" | "reporte" | "informes" | "dashboard" | "configuracion";
+type SectionKey = "reporte" | "informes" | "dashboard" | "configuracion";
 
 const navItems: Array<{ key: SectionKey | "placeholder"; label: string }> = [
-  { key: "inicio", label: "Inicio" },
   { key: "reporte", label: "Reporte del dia" },
   { key: "informes", label: "Informes" },
   { key: "dashboard", label: "Dashboard" },
@@ -191,7 +191,7 @@ const emptyDetencionForm: DetencionFormState = {
 };
 
 export function App() {
-  const [activeSection, setActiveSection] = useState<SectionKey>("inicio");
+  const [activeSection, setActiveSection] = useState<SectionKey>("reporte");
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [configuration, setConfiguration] = useState<ConfigurationState | null>(null);
   const [reporte, setReporte] = useState<Reporte | null>(null);
@@ -239,12 +239,10 @@ export function App() {
     setIsLoading(true);
     setError(null);
     try {
-      const [healthResponse, configurationResponse, reporteResponse] = await Promise.all([
-        fetchHealth(),
+      const [configurationResponse, reporteResponse] = await Promise.all([
         fetchInitialConfiguration(incluirInactivas),
         fetchReporteActual()
       ]);
-      setHealth(healthResponse);
       setConfiguration(configurationResponse);
       if (requestVersion !== reporteRequestVersion.current) return;
       await applyReporteActual(reporteResponse);
@@ -356,10 +354,14 @@ export function App() {
   }
 
   function triggerPdfDownload(blob: Blob, reporteId: number) {
+    triggerBlobDownload(blob, `reporte-diario-${reporteId}.pdf`);
+  }
+
+  function triggerBlobDownload(blob: Blob, filename: string) {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `reporte-diario-${reporteId}.pdf`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -375,6 +377,21 @@ export function App() {
       setMessage("PDF descargado correctamente");
     } catch (downloadError) {
       setError(downloadError instanceof Error ? downloadError.message : "Error al descargar PDF");
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function downloadBackup() {
+    setIsSaving(true);
+    setError(null);
+    setMessage("Preparando respaldo...");
+    try {
+      triggerBlobDownload(await downloadDatabaseBackup(), `respaldo-reporte-detenciones-${dateInputValue(new Date())}.sql`);
+      setMessage("Respaldo descargado correctamente");
+    } catch (backupError) {
+      setError(backupError instanceof Error ? backupError.message : "Error al descargar respaldo");
       setMessage(null);
     } finally {
       setIsSaving(false);
@@ -577,17 +594,7 @@ export function App() {
 
       <StatusBar error={error} isLoading={isLoading} isSaving={isSaving} message={message} />
 
-      {activeSection === "inicio" ? (
-        <HomeView
-          activeSummary={activeSummary}
-          configuration={configuration}
-          health={health}
-          isLoading={isLoading}
-          onOpenReporte={() => setActiveSection("reporte")}
-          onOpenConfiguration={() => setActiveSection("configuracion")}
-          onOpenDashboard={() => setActiveSection("dashboard")}
-        />
-      ) : activeSection === "reporte" ? (
+      {activeSection === "reporte" ? (
         <ReporteDiaView
           configuration={configuration}
           detenciones={detenciones}
@@ -635,6 +642,7 @@ export function App() {
           onDeactivateIndicador={(id) => runMutation(() => deactivateIndicador(id), "Registro desactivado correctamente")}
           onDeactivateLinea={(id) => runMutation(() => deactivateLinea(id), "Registro desactivado correctamente")}
           onDeactivateTurno={(id) => runMutation(() => deactivateTurno(id), "Registro desactivado correctamente")}
+          onDownloadBackup={downloadBackup}
           onReload={() => loadDashboardData(showInactive)}
           onShowInactiveChange={(value) => {
             setShowInactive(value);
@@ -1878,6 +1886,7 @@ function ConfigurationView({
   onDeactivateIndicador,
   onDeactivateLinea,
   onDeactivateTurno,
+  onDownloadBackup,
   onReload,
   onShowInactiveChange,
   onUpdateHorario,
@@ -1897,6 +1906,7 @@ function ConfigurationView({
   onDeactivateIndicador: (id: number) => Promise<void>;
   onDeactivateLinea: (id: number) => Promise<void>;
   onDeactivateTurno: (id: number) => Promise<void>;
+  onDownloadBackup: () => Promise<void>;
   onReload: () => void;
   onShowInactiveChange: (value: boolean) => void;
   onUpdateHorario: (id: number, input: TurnoHorarioInput) => Promise<void>;
@@ -1934,6 +1944,27 @@ function ConfigurationView({
       </div>
 
       <div className="space-y-6">
+        <ConfigPanel title="Respaldo de base de datos">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm leading-6 text-industrial-600">
+                Descarga un archivo SQL con la estructura y los datos actuales del sistema. Guardalo en una ubicacion segura antes de cambios importantes o limpieza de pruebas.
+              </p>
+              <p className="mt-2 text-xs font-semibold uppercase text-industrial-500">
+                Incluye lineas, indicadores, turnos, horarios, reportes y detenciones.
+              </p>
+            </div>
+            <button
+              className="app-primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-industrial-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isSaving}
+              onClick={onDownloadBackup}
+              type="button"
+            >
+              <Download className="h-4 w-4" aria-hidden="true" />
+              Descargar respaldo SQL
+            </button>
+          </div>
+        </ConfigPanel>
         <LineasSection
           disabled={isSaving}
           lineas={configuration?.lineas ?? []}

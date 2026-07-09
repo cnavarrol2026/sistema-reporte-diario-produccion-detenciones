@@ -2,6 +2,7 @@ import http from "node:http";
 import { URL } from "node:url";
 import { env } from "./config/env.js";
 import { testDatabaseConnection } from "./db/mysql.js";
+import { generateDatabaseBackupSql } from "./services/databaseBackupService.js";
 import { getDashboardResumen } from "./services/dashboardService.js";
 import {
   createIndicador,
@@ -240,6 +241,14 @@ async function route(method: Method, url: URL, body: Record<string, unknown>): P
   }
   if (method === "GET" && parts.join("/") === "dashboard") {
     return { statusCode: 200, payload: await getDashboardResumen(parseDashboardFilters(url)) };
+  }
+  if (method === "GET" && parts.join("/") === "database/backup") {
+    return {
+      statusCode: 200,
+      body: await generateDatabaseBackupSql(),
+      contentType: "application/sql; charset=utf-8",
+      filename: `respaldo-reporte-detenciones-${new Date().toISOString().slice(0, 10)}.sql`
+    };
   }
 
   if (parts[0] === "lineas") {

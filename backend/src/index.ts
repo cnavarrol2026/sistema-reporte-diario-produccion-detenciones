@@ -2,6 +2,7 @@ import cors from "cors";
 import express from "express";
 import { env } from "./config/env.js";
 import { configurationRoutes } from "./routes/configurationRoutes.js";
+import { databaseRoutes } from "./routes/databaseRoutes.js";
 import { dashboardRoutes } from "./routes/dashboardRoutes.js";
 import { healthRoutes } from "./routes/healthRoutes.js";
 import { reporteRoutes } from "./routes/reporteRoutes.js";
@@ -17,6 +18,7 @@ app.use(express.json());
 
 app.use("/api", healthRoutes);
 app.use("/api", configurationRoutes);
+app.use("/api", databaseRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", reporteRoutes);
 

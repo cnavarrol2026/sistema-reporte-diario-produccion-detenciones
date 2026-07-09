@@ -351,6 +351,10 @@ export function downloadReportePdf(reporteId: number) {
   return requestBlob(`/reportes/${reporteId}/pdf`);
 }
 
+export function downloadDatabaseBackup() {
+  return requestBlob("/database/backup");
+}
+
 export function fetchDetenciones(reporteId: number) {
   return requestJson<Detencion[]>(`/reportes/${reporteId}/detenciones`);
 }
