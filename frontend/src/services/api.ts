@@ -104,6 +104,7 @@ export interface Reporte {
 }
 
 export interface ReporteUpdateInput {
+  fecha_reporte?: string;
   linea_id?: number;
   opinona_planificada?: number | null;
   opinona_real?: number | null;
@@ -301,8 +302,11 @@ export function fetchReporteActual() {
   return requestJson<Reporte | null>("/reportes/actual");
 }
 
-export function iniciarReporte() {
-  return requestJson<Reporte>("/reportes/iniciar", { method: "POST" });
+export function iniciarReporte(fecha_reporte?: string) {
+  return requestJson<Reporte>("/reportes/iniciar", {
+    method: "POST",
+    body: JSON.stringify({ fecha_reporte })
+  });
 }
 
 export function updateReporte(id: number, input: ReporteUpdateInput) {

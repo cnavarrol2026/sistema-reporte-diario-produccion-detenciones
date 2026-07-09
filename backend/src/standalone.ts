@@ -157,6 +157,7 @@ function parseReporte(body: Record<string, unknown>): ReporteUpdateInput {
   }
 
   return {
+    fecha_reporte: "fecha_reporte" in body ? parseOptionalDateBody(body.fecha_reporte, "fecha_reporte") : undefined,
     linea_id: typeof body.linea_id === "undefined" ? undefined : parseId(String(body.linea_id), "linea_id"),
     opinona_planificada: "opinona_planificada" in body ? optionalNumber(body.opinona_planificada) : undefined,
     opinona_real: "opinona_real" in body ? optionalNumber(body.opinona_real) : undefined,
@@ -189,6 +190,14 @@ function parseDetencion(body: Record<string, unknown>): DetencionInput {
 function parseDateFilter(value: string | null, field: string) {
   if (!value) return undefined;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw Object.assign(new Error(`${field} debe tener formato YYYY-MM-DD`), { statusCode: 400 });
+  }
+  return value;
+}
+
+function parseOptionalDateBody(value: unknown, field: string) {
+  if (typeof value === "undefined" || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw Object.assign(new Error(`${field} debe tener formato YYYY-MM-DD`), { statusCode: 400 });
   }
   return value;
@@ -265,7 +274,7 @@ async function route(method: Method, url: URL, body: Record<string, unknown>): P
     return { statusCode: 200, payload: await getReporteActual() };
   }
   if (parts[0] === "reportes" && parts[1] === "iniciar" && method === "POST") {
-    return { statusCode: 201, payload: await iniciarReporteActual() };
+    return { statusCode: 201, payload: await iniciarReporteActual({ fecha_reporte: parseOptionalDateBody(body.fecha_reporte, "fecha_reporte") }) };
   }
   if (parts[0] === "reportes" && parts[1] === "finalizados" && method === "GET") {
     return { statusCode: 200, payload: await getReportesFinalizados(parseFinalizadosFilters(url)) };

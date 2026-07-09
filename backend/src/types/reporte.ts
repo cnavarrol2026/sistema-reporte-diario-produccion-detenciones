@@ -24,6 +24,7 @@ export interface Reporte {
 }
 
 export interface ReporteUpdateInput {
+  fecha_reporte?: string;
   linea_id?: number;
   opinona_planificada?: number | null;
   opinona_real?: number | null;

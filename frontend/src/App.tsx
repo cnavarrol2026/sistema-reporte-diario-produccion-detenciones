@@ -143,6 +143,7 @@ const emptyHorario: TurnoHorarioInput = {
 };
 
 interface ReporteFormState {
+  fecha_reporte: string;
   linea_id: string;
   opinona_planificada: string;
   opinona_real: string;
@@ -157,6 +158,7 @@ interface ReporteFormState {
 }
 
 const emptyReporteForm: ReporteFormState = {
+  fecha_reporte: "",
   linea_id: "",
   opinona_planificada: "",
   opinona_real: "",
@@ -379,17 +381,33 @@ export function App() {
     }
   }
 
-  async function startNewReporte() {
+  async function startNewReporte(fechaReporte: string) {
     const requestVersion = ++reporteRequestVersion.current;
     setIsSaving(true);
     setReportSaveStatus("idle");
     setError(null);
     setMessage("Iniciando reporte...");
     try {
-      const nextReporte = await iniciarReporte();
+      const nextReporte = await iniciarReporte(fechaReporte);
       if (!nextReporte) throw new Error("No fue posible iniciar el reporte.");
       if (requestVersion !== reporteRequestVersion.current) return;
-      await applyReporteActual(nextReporte);
+      const nextForm = reporteToForm(nextReporte);
+      setReporte(nextReporte);
+      setReporteForm(nextForm);
+      setDetenciones([]);
+      setReporteResumen(null);
+      lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
+      try {
+        const [detencionesResponse, resumenResponse] = await Promise.all([
+          fetchDetenciones(nextReporte.id),
+          fetchReporteResumen(nextReporte.id)
+        ]);
+        if (requestVersion !== reporteRequestVersion.current) return;
+        setDetenciones(detencionesResponse);
+        setReporteResumen(resumenResponse);
+      } catch {
+        setError("Reporte iniciado, pero no fue posible cargar el resumen. Actualice la pagina si los totales no aparecen.");
+      }
       setMessage("Reporte iniciado correctamente");
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "No fue posible iniciar el reporte.");
@@ -1325,7 +1343,7 @@ function ReporteDiaView({
   onFinalizeReporte: () => Promise<void>;
   onFormChange: (form: ReporteFormState) => void;
   onSaveDetencion: (input: DetencionInput, detencionId?: number) => Promise<void>;
-  onStartReporte: () => Promise<void>;
+  onStartReporte: (fechaReporte: string) => Promise<void>;
   reportSaveStatus: "idle" | "saving" | "saved" | "error";
   reporte: Reporte | null;
   reporteForm: ReporteFormState;
@@ -1334,6 +1352,7 @@ function ReporteDiaView({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingDetencion, setEditingDetencion] = useState<Detencion | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [startReportDate, setStartReportDate] = useState(() => dateInputValue(new Date()));
   const cumplimiento = calculateCumplimiento(reporteForm.producciones_programadas, reporteForm.producciones_realizadas);
   const turnoActual = getTurnoActual(configuration?.horarios ?? []);
   const isFinalizado = reporte?.estado === "finalizado";
@@ -1377,13 +1396,22 @@ function ReporteDiaView({
             <button
               className="app-primary-button inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-industrial-900 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-industrial-800 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={isSaving}
-              onClick={onStartReporte}
+              onClick={() => onStartReporte(startReportDate)}
               type="button"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />
               Iniciar nuevo reporte
             </button>
           </div>
+          <label className="mt-5 block max-w-xs text-sm font-medium text-industrial-700">
+            Fecha del reporte
+            <input
+              className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+              onChange={(event) => setStartReportDate(event.target.value)}
+              type="date"
+              value={startReportDate}
+            />
+          </label>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -1473,6 +1501,15 @@ function ReporteDiaView({
         </div>
 
         <fieldset className="mt-6 grid gap-4 lg:grid-cols-3" disabled={isFinalizado || !reporte}>
+          <label className="block text-sm font-medium text-industrial-700">
+            Fecha del reporte
+            <input
+              className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+              onChange={(event) => updateForm({ fecha_reporte: event.target.value })}
+              type="date"
+              value={reporteForm.fecha_reporte}
+            />
+          </label>
           <SelectInput
             label="Linea"
             onChange={(linea_id) => updateForm({ linea_id })}
@@ -2627,6 +2664,7 @@ function SummaryCard({ emphasis = false, label, value }: { emphasis?: boolean; l
 
 function reporteToForm(reporte: Reporte): ReporteFormState {
   return {
+    fecha_reporte: reporte.fecha_reporte,
     linea_id: String(reporte.linea_id),
     opinona_planificada: valueToFormString(reporte.opinona_planificada),
     opinona_real: valueToFormString(reporte.opinona_real),
@@ -2644,6 +2682,7 @@ function reporteToForm(reporte: Reporte): ReporteFormState {
 function validateReporteGeneralFields(form: ReporteFormState) {
   const missing: string[] = [];
 
+  if (!form.fecha_reporte) missing.push("Fecha del reporte");
   if (!form.linea_id) missing.push("Linea seleccionada");
   if (!form.opinona_planificada.trim()) missing.push("OPINONA planificada");
   if (!form.opinona_real.trim()) missing.push("OPINONA real");
@@ -2659,6 +2698,7 @@ function validateReporteGeneralFields(form: ReporteFormState) {
 
 function reporteToPayload(form: ReporteFormState): ReporteUpdateInput {
   return {
+    fecha_reporte: form.fecha_reporte || undefined,
     linea_id: form.linea_id ? Number(form.linea_id) : undefined,
     opinona_planificada: form.opinona_planificada === "" ? null : Number(form.opinona_planificada),
     opinona_real: form.opinona_real === "" ? null : Number(form.opinona_real),

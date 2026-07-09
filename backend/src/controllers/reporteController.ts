@@ -73,6 +73,14 @@ function parseDateFilter(value: unknown, field: string) {
   return value;
 }
 
+function parseOptionalDateBody(value: unknown, field: string) {
+  if (typeof value === "undefined" || value === null || value === "") return undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw Object.assign(new Error(`${field} debe tener formato YYYY-MM-DD`), { statusCode: 400 });
+  }
+  return value;
+}
+
 function parseReportesFinalizadosFilters(query: Request["query"]): ReporteFinalizadoFilters {
   const filters: ReporteFinalizadoFilters = {
     fecha_inicio: parseDateFilter(query.fecha_inicio, "fecha_inicio"),
@@ -93,6 +101,7 @@ function parseReportesFinalizadosFilters(query: Request["query"]): ReporteFinali
 function parseReporteUpdate(body: Record<string, unknown>): ReporteUpdateInput {
   const input: ReporteUpdateInput = {};
 
+  if ("fecha_reporte" in body) input.fecha_reporte = parseOptionalDateBody(body.fecha_reporte, "fecha_reporte");
   if ("linea_id" in body) input.linea_id = parseLineaId(body.linea_id);
   if ("opinona_planificada" in body) input.opinona_planificada = parsePercent(body.opinona_planificada, "opinona_planificada");
   if ("opinona_real" in body) input.opinona_real = parsePercent(body.opinona_real, "opinona_real");
@@ -130,8 +139,10 @@ export async function getReporteActualController(_request: Request, response: Re
   response.json(await getReporteActual());
 }
 
-export async function iniciarReporteController(_request: Request, response: Response) {
-  response.status(201).json(await iniciarReporteActual());
+export async function iniciarReporteController(request: Request, response: Response) {
+  response.status(201).json(await iniciarReporteActual({
+    fecha_reporte: parseOptionalDateBody(request.body?.fecha_reporte, "fecha_reporte")
+  }));
 }
 
 export async function updateReporteController(request: Request, response: Response) {

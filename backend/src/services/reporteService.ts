@@ -24,6 +24,23 @@ function toDbTipo(tipo: TipoAtrasoAdelanto) {
   return tipo === "Adelanto" ? "adelanto" : "atraso";
 }
 
+function validateDateInput(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw Object.assign(new Error("fecha_reporte debe tener formato YYYY-MM-DD"), { statusCode: 400 });
+  }
+  return value;
+}
+
+function getSantiagoDateValue() {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Santiago",
+    year: "numeric"
+  });
+  return formatter.format(new Date());
+}
+
 function reporteSelectSql(whereClause: string) {
   return `SELECT
     r.id,
@@ -131,10 +148,11 @@ export async function getReporteActual() {
   return openRows[0] ?? null;
 }
 
-export async function iniciarReporteActual() {
+export async function iniciarReporteActual(input: { fecha_reporte?: string } = {}) {
   const current = await getReporteActual();
   if (current) return current;
 
+  const fechaReporte = input.fecha_reporte ? validateDateInput(input.fecha_reporte) : getSantiagoDateValue();
   const lineaId = await getPrimerLineaActivaId();
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO reportes (
@@ -149,8 +167,8 @@ export async function iniciarReporteActual() {
       observacion_general,
       estado,
       ultima_actualizacion
-    ) VALUES (CURDATE(), ?, 0, 0, 0, 0, 'atraso', 0, NULL, 'abierto', NOW())`,
-    [lineaId]
+    ) VALUES (?, ?, 0, 0, 0, 0, 'atraso', 0, NULL, 'abierto', NOW())`,
+    [fechaReporte, lineaId]
   );
 
   return getReporteById(result.insertId);
@@ -170,6 +188,10 @@ export async function updateReporte(id: number, input: ReporteUpdateInput) {
   const fields: string[] = [];
   const values: Array<string | number | null> = [];
 
+  if ("fecha_reporte" in input && input.fecha_reporte) {
+    fields.push("fecha_reporte = ?");
+    values.push(validateDateInput(input.fecha_reporte));
+  }
   if ("linea_id" in input) {
     fields.push("linea_id = ?");
     values.push(input.linea_id ?? current.linea_id);
@@ -320,6 +342,7 @@ function isBlank(value: unknown) {
 function validateReporteForFinalization(reporte: Reporte, detenciones: DetencionFinalizacionRow[]) {
   const missing: string[] = [];
 
+  if (isBlank(reporte.fecha_reporte)) missing.push("Fecha del reporte");
   if (isBlank(reporte.linea_id)) missing.push("Linea seleccionada");
   if (isBlank(reporte.opinona_planificada)) missing.push("OPINONA planificada");
   if (isBlank(reporte.opinona_real)) missing.push("OPINONA real");
