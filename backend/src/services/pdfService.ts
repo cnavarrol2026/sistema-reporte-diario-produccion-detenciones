@@ -1,6 +1,7 @@
-import PDFDocument from "pdfkit";
 import { getDetencionesByReporteId } from "./detencionService.js";
 import { getReporteById, getReporteResumen } from "./reporteService.js";
+
+type PdfFont = "regular" | "bold";
 
 type TableColumn<T> = {
   label: string;
@@ -8,122 +9,208 @@ type TableColumn<T> = {
   value: (row: T) => string | number | null | undefined;
 };
 
-type TableOptions = {
-  fontSize?: number;
-  paddingY?: number;
-};
-
 const page = {
-  margin: 28,
-  width: 539,
-  bottom: 812
+  width: 595.28,
+  height: 841.89,
+  margin: 34,
+  bottom: 42
 };
 
-function textValue(value: string | number | null | undefined) {
-  return value === null || typeof value === "undefined" || value === "" ? "-" : String(value);
+const contentWidth = page.width - page.margin * 2;
+
+function sanitizeText(value: string | number | null | undefined) {
+  if (value === null || typeof value === "undefined" || value === "") return "-";
+  return String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\x20-\x7E]/g, " ");
 }
 
-function percentValue(value: number | null) {
-  return value === null ? "N/A" : `${value}%`;
+function escapePdfText(value: string) {
+  return sanitizeText(value).replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
 }
 
-function ensureSpace(document: PDFKit.PDFDocument, needed: number) {
-  if (document.y + needed > page.bottom) {
-    document.addPage();
-    document.y = page.margin;
-  }
+function percentValue(value: number | string | null | undefined) {
+  return value === null || typeof value === "undefined" ? "N/A" : `${value}%`;
 }
 
-function title(document: PDFKit.PDFDocument, text: string) {
-  ensureSpace(document, 24);
-  document.moveDown(0.45);
-  document.font("Helvetica-Bold").fontSize(10).fillColor("#172534").text(text);
-  document.moveDown(0.2);
-  document.moveTo(page.margin, document.y).lineTo(page.margin + page.width, document.y).strokeColor("#d9e2ec").stroke();
-  document.moveDown(0.35);
-}
+function wrapText(value: string | number | null | undefined, maxChars: number, maxLines = 2) {
+  const words = sanitizeText(value).split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
 
-function infoGrid(document: PDFKit.PDFDocument, items: Array<{ label: string; value: string | number | null | undefined }>) {
-  const columnWidth = 174;
-  const rowHeight = 28;
-  let x = page.margin;
-  let y = document.y;
-
-  items.forEach((item, index) => {
-    if (index > 0 && index % 3 === 0) {
-      x = page.margin;
-      y += rowHeight + 5;
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length <= maxChars) {
+      current = candidate;
+      continue;
     }
-    ensureSpace(document, rowHeight + 8);
-    document.roundedRect(x, y, columnWidth, rowHeight, 4).fillAndStroke("#f8fafc", "#e4ebf2");
-    document.font("Helvetica-Bold").fontSize(6.5).fillColor("#526274").text(item.label.toUpperCase(), x + 7, y + 5, {
-      width: columnWidth - 14
-    });
-    document.font("Helvetica").fontSize(8).fillColor("#172534").text(textValue(item.value), x + 7, y + 16, {
-      width: columnWidth - 14
-    });
-    x += columnWidth + 8;
-  });
-
-  document.y = y + rowHeight + 2;
-}
-
-function table<T>(document: PDFKit.PDFDocument, columns: TableColumn<T>[], rows: T[], options: TableOptions = {}) {
-  const tableWidth = columns.reduce((total, column) => total + column.width, 0);
-  const headerHeight = 18;
-  const fontSize = options.fontSize ?? 7.5;
-  const paddingY = options.paddingY ?? 7;
-  const minRowHeight = Math.max(20, fontSize + paddingY * 2);
-
-  const drawHeader = () => {
-    ensureSpace(document, headerHeight + minRowHeight);
-    let x = page.margin;
-    document.rect(page.margin, document.y, tableWidth, headerHeight).fill("#eaf1f8");
-    columns.forEach((column) => {
-      document.font("Helvetica-Bold").fontSize(6.5).fillColor("#172534").text(column.label, x + 4, document.y + 6, {
-        width: column.width - 10
-      });
-      x += column.width;
-    });
-    document.y += headerHeight;
-  };
-
-  drawHeader();
-
-  if (rows.length === 0) {
-    document.font("Helvetica").fontSize(8).fillColor("#526274").text("Sin registros.", page.margin + 5, document.y + 7);
-    document.y += minRowHeight + 8;
-    return;
+    if (current) lines.push(current);
+    current = word.length > maxChars ? `${word.slice(0, Math.max(0, maxChars - 1))}.` : word;
+    if (lines.length >= maxLines) break;
   }
 
-  rows.forEach((row, index) => {
-    const values = columns.map((column) => textValue(column.value(row)));
-    const rowHeight = Math.max(
-      minRowHeight,
-      ...values.map((value, columnIndex) =>
-        document.font("Helvetica").fontSize(fontSize).heightOfString(value, { width: columns[columnIndex].width - 10 }) + paddingY * 2
-      )
-    );
+  if (current && lines.length < maxLines) lines.push(current);
+  if (lines.length === 0) lines.push("-");
+  return lines.slice(0, maxLines);
+}
 
-    if (document.y + rowHeight > page.bottom) {
-      document.addPage();
-      document.y = page.margin;
-      drawHeader();
+class SimplePdf {
+  private pages: string[][] = [[]];
+  private y = page.height - page.margin;
+
+  private get content() {
+    return this.pages[this.pages.length - 1];
+  }
+
+  addPage() {
+    this.pages.push([]);
+    this.y = page.height - page.margin;
+  }
+
+  ensureSpace(height: number) {
+    if (this.y - height < page.bottom) this.addPage();
+  }
+
+  moveDown(height: number) {
+    this.y -= height;
+  }
+
+  text(value: string | number | null | undefined, x: number, y: number, size = 8, font: PdfFont = "regular") {
+    const fontRef = font === "bold" ? "F2" : "F1";
+    this.content.push(`BT /${fontRef} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdfText(sanitizeText(value))}) Tj ET`);
+  }
+
+  line(x1: number, y1: number, x2: number, y2: number) {
+    this.content.push(`${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
+  }
+
+  section(title: string) {
+    this.ensureSpace(24);
+    this.moveDown(13);
+    this.text(title, page.margin, this.y, 9.5, "bold");
+    this.moveDown(5);
+    this.line(page.margin, this.y, page.margin + contentWidth, this.y);
+    this.moveDown(10);
+  }
+
+  paragraph(value: string | number | null | undefined, maxLines = 4) {
+    const lines = wrapText(value, 126, maxLines);
+    this.ensureSpace(lines.length * 11 + 4);
+    for (const line of lines) {
+      this.text(line, page.margin, this.y, 8);
+      this.moveDown(11);
+    }
+    this.moveDown(3);
+  }
+
+  infoGrid(items: Array<{ label: string; value: string | number | null | undefined }>) {
+    const columnWidth = (contentWidth - 14) / 3;
+    const rowHeight = 24;
+
+    for (let index = 0; index < items.length; index += 3) {
+      this.ensureSpace(rowHeight + 5);
+      const rowItems = items.slice(index, index + 3);
+      rowItems.forEach((item, columnIndex) => {
+        const x = page.margin + columnIndex * (columnWidth + 7);
+        this.text(item.label.toUpperCase(), x, this.y, 6.5, "bold");
+        this.text(sanitizeText(item.value).slice(0, 34), x, this.y - 11, 8);
+      });
+      this.moveDown(rowHeight);
+    }
+    this.moveDown(3);
+  }
+
+  table<T>(columns: TableColumn<T>[], rows: T[], options: { rowHeight?: number; fontSize?: number; maxLines?: number } = {}) {
+    const rowHeight = options.rowHeight ?? 27;
+    const fontSize = options.fontSize ?? 6.7;
+    const maxLines = options.maxLines ?? 2;
+
+    const drawHeader = () => {
+      this.ensureSpace(18 + rowHeight);
+      let x = page.margin;
+      columns.forEach((column) => {
+        this.text(column.label, x, this.y, 6.5, "bold");
+        x += column.width;
+      });
+      this.moveDown(12);
+      this.line(page.margin, this.y, page.margin + contentWidth, this.y);
+      this.moveDown(6);
+    };
+
+    drawHeader();
+
+    if (rows.length === 0) {
+      this.ensureSpace(18);
+      this.text("Sin registros.", page.margin, this.y, 8);
+      this.moveDown(18);
+      return;
     }
 
-    let x = page.margin;
-    const y = document.y;
-    document.rect(page.margin, y, tableWidth, rowHeight).fill(index % 2 === 0 ? "#ffffff" : "#f8fafc");
-    columns.forEach((column, columnIndex) => {
-      document.font("Helvetica").fontSize(fontSize).fillColor("#172534").text(values[columnIndex], x + 4, y + paddingY, {
-        width: column.width - 8
-      });
-      x += column.width;
-    });
-    document.y = y + rowHeight;
-  });
+    rows.forEach((row) => {
+      if (this.y - rowHeight < page.bottom) {
+        this.addPage();
+        drawHeader();
+      }
 
-  document.moveDown(0.4);
+      let x = page.margin;
+      const top = this.y;
+      columns.forEach((column) => {
+        const raw = column.value(row);
+        const estimatedChars = Math.max(5, Math.floor(column.width / (fontSize * 0.55)));
+        const lines = wrapText(raw, estimatedChars, maxLines);
+        lines.forEach((line, lineIndex) => {
+          this.text(line, x, top - lineIndex * (fontSize + 2), fontSize);
+        });
+        x += column.width;
+      });
+      this.moveDown(rowHeight);
+      this.line(page.margin, this.y + 7, page.margin + contentWidth, this.y + 7);
+    });
+
+    this.moveDown(6);
+  }
+
+  build() {
+    const pageCount = this.pages.length;
+    this.pages.forEach((content, index) => {
+      content.push(`BT /F1 7 Tf ${page.margin.toFixed(2)} 22 Td (Pagina ${index + 1} de ${pageCount}) Tj ET`);
+    });
+
+    const objects: string[] = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
+    ];
+
+    const pageObjectIds: number[] = [];
+    this.pages.forEach((content) => {
+      const stream = content.join("\n");
+      const contentObjectId = objects.length + 1;
+      objects.push(`<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`);
+      const pageObjectId = objects.length + 1;
+      pageObjectIds.push(pageObjectId);
+      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectId} 0 R >>`);
+    });
+
+    objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`;
+
+    const parts: string[] = ["%PDF-1.4\n"];
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(Buffer.byteLength(parts.join(""), "latin1"));
+      parts.push(`${index + 1} 0 obj\n${object}\nendobj\n`);
+    });
+    const xrefOffset = Buffer.byteLength(parts.join(""), "latin1");
+    parts.push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
+    offsets.slice(1).forEach((offset) => {
+      parts.push(`${String(offset).padStart(10, "0")} 00000 n \n`);
+    });
+    parts.push(`trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`);
+
+    return Buffer.from(parts.join(""), "latin1");
+  }
 }
 
 export async function generateReportePdfBuffer(reporteId: number) {
@@ -137,51 +224,41 @@ export async function generateReportePdfBuffer(reporteId: number) {
     getDetencionesByReporteId(reporteId)
   ]);
 
-  const document = new PDFDocument({ margin: page.margin, size: "A4", bufferPages: true });
-  const chunks: Buffer[] = [];
-  const output = new Promise<Buffer>((resolve, reject) => {
-    document.on("end", () => resolve(Buffer.concat(chunks)));
-    document.on("error", reject);
-  });
-  document.on("data", (chunk: Buffer) => chunks.push(chunk));
+  const pdf = new SimplePdf();
 
-  document.font("Helvetica-Bold").fontSize(14).fillColor("#172534").text("Reporte Diario de Produccion y Detenciones");
-  document.font("Helvetica").fontSize(8).fillColor("#526274").text(`Reporte ID ${reporte.id} | Estado: ${reporte.estado}`);
+  pdf.text("Reporte Diario de Produccion y Detenciones", page.margin, page.height - page.margin, 14, "bold");
+  pdf.text(`Reporte ID ${reporte.id} | Estado ${reporte.estado}`, page.margin, page.height - page.margin - 15, 8);
+  pdf.moveDown(32);
 
-  title(document, "Datos principales");
-  infoGrid(document, [
+  pdf.section("Resumen general");
+  pdf.infoGrid([
     { label: "Fecha reporte", value: reporte.fecha_reporte },
     { label: "Linea", value: reporte.linea_nombre },
     { label: "Finalizado", value: reporte.finalizado_at },
-    { label: "Ultima actualizacion", value: reporte.ultima_actualizacion },
     { label: "OPINONA planificada", value: percentValue(reporte.opinona_planificada) },
     { label: "OPINONA real", value: percentValue(reporte.opinona_real) },
+    { label: "Cumplimiento", value: percentValue(resumen.cumplimiento) },
     { label: "Producciones programadas", value: reporte.producciones_programadas },
     { label: "Producciones realizadas", value: reporte.producciones_realizadas },
-    { label: "Cumplimiento", value: percentValue(resumen.cumplimiento) },
     { label: "Atraso / Adelanto", value: `${reporte.tipo_atraso_adelanto}: ${reporte.minutos_atraso_adelanto} min` },
-    { label: "Total minutos detencion", value: `${resumen.total_minutos} min` },
-    { label: "Total detenciones", value: resumen.total_detenciones }
+    { label: "Total minutos", value: `${resumen.total_minutos} min` },
+    { label: "Total detenciones", value: resumen.total_detenciones },
+    { label: "Actualizacion", value: reporte.ultima_actualizacion }
   ]);
 
-  title(document, "Observacion general");
-  ensureSpace(document, 32);
-  document.font("Helvetica").fontSize(8).fillColor("#172534").text(textValue(reporte.observacion_general), {
-    lineGap: 1,
-    width: page.width
-  });
+  pdf.section("Observacion general");
+  pdf.paragraph(reporte.observacion_general, 4);
 
-  title(document, "Detenciones del dia");
-  table(
-    document,
+  pdf.section("Detenciones del dia");
+  pdf.table(
     [
-      { label: "Ind.", width: 38, value: (row) => row.indicador },
-      { label: "Turno", width: 38, value: (row) => row.turno },
-      { label: "Inicio", width: 40, value: (row) => row.inicio },
-      { label: "Fin", width: 40, value: (row) => row.fin },
-      { label: "Min", width: 32, value: (row) => row.minutos },
-      { label: "Descripcion", width: 211, value: (row) => row.descripcion },
-      { label: "Plan de accion", width: 140, value: (row) => row.plan }
+      { label: "Ind.", width: 35, value: (row) => row.indicador },
+      { label: "Turno", width: 35, value: (row) => row.turno },
+      { label: "Inicio", width: 42, value: (row) => row.inicio },
+      { label: "Fin", width: 42, value: (row) => row.fin },
+      { label: "Min", width: 30, value: (row) => row.minutos },
+      { label: "Descripcion", width: 220, value: (row) => row.descripcion },
+      { label: "Plan accion", width: 123, value: (row) => row.plan }
     ],
     detenciones.map((detencion) => ({
       indicador: detencion.indicador_codigo,
@@ -192,46 +269,34 @@ export async function generateReportePdfBuffer(reporteId: number) {
       descripcion: detencion.descripcion,
       plan: detencion.plan_accion ?? "-"
     })),
-    { fontSize: 6.7, paddingY: 4 }
+    { rowHeight: 28, fontSize: 6.4, maxLines: 2 }
   );
 
-  title(document, "Minutos por indicador");
-  table(
-    document,
+  pdf.section("Minutos por indicador");
+  pdf.table(
     [
-      { label: "Codigo", width: 60, value: (row) => row.codigo },
-      { label: "Nombre", width: 389, value: (row) => row.nombre },
-      { label: "Min", width: 90, value: (row) => row.minutos }
+      { label: "Codigo", width: 55, value: (row) => row.codigo },
+      { label: "Nombre", width: 375, value: (row) => row.nombre },
+      { label: "Min", width: 97, value: (row) => row.minutos }
     ],
     resumen.total_por_indicador
       .map((item) => ({ codigo: item.codigo, nombre: item.nombre, minutos: item.minutos }))
       .sort((a, b) => Number(b.minutos) - Number(a.minutos) || String(a.codigo).localeCompare(String(b.codigo))),
-    { fontSize: 7, paddingY: 4 }
+    { rowHeight: 20, fontSize: 7, maxLines: 1 }
   );
 
-  title(document, "Minutos por turno");
-  table(
-    document,
+  pdf.section("Minutos por turno");
+  pdf.table(
     [
-      { label: "Turno", width: 80, value: (row) => row.codigo },
-      { label: "Nombre", width: 369, value: (row) => row.nombre },
-      { label: "Min", width: 90, value: (row) => row.minutos }
+      { label: "Turno", width: 70, value: (row) => row.codigo },
+      { label: "Nombre", width: 360, value: (row) => row.nombre },
+      { label: "Min", width: 97, value: (row) => row.minutos }
     ],
     resumen.total_por_turno
       .map((item) => ({ codigo: item.codigo, nombre: item.nombre, minutos: item.minutos }))
       .sort((a, b) => Number(b.minutos) - Number(a.minutos) || String(a.codigo).localeCompare(String(b.codigo))),
-    { fontSize: 7, paddingY: 4 }
+    { rowHeight: 20, fontSize: 7, maxLines: 1 }
   );
 
-  const pageCount = document.bufferedPageRange().count;
-  for (let pageIndex = 0; pageIndex < pageCount; pageIndex += 1) {
-    document.switchToPage(pageIndex);
-    document.font("Helvetica").fontSize(7).fillColor("#526274").text(`Pagina ${pageIndex + 1} de ${pageCount}`, page.margin, 820, {
-      align: "right",
-      width: page.width
-    });
-  }
-
-  document.end();
-  return output;
+  return pdf.build();
 }
