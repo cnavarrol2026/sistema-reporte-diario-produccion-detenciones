@@ -24,7 +24,7 @@ function parseOptionalNumber(value: unknown, field: string) {
     return null;
   }
 
-  const parsed = Number(value);
+  const parsed = Number(typeof value === "string" ? value.replace(",", ".") : value);
   if (!Number.isFinite(parsed)) {
     throw Object.assign(new Error(`${field} debe ser numerico`), { statusCode: 400 });
   }

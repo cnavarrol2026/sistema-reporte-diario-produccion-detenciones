@@ -2506,9 +2506,11 @@ function NumericTextInput({ label, onChange, value }: { label: string; onChange:
       {label}
       <input
         className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+        inputMode="decimal"
         min="0"
-        onChange={(event) => onChange(event.target.value)}
-        type="number"
+        onChange={(event) => onChange(normalizeDecimalInput(event.target.value))}
+        pattern="[0-9]*[.]?[0-9]*"
+        type="text"
         value={value}
       />
     </label>
@@ -2562,12 +2564,12 @@ function reporteToPayload(form: ReporteFormState): ReporteUpdateInput {
   return {
     fecha_reporte: form.fecha_reporte || undefined,
     linea_id: form.linea_id ? Number(form.linea_id) : undefined,
-    opinona_planificada: form.opinona_planificada === "" ? null : Number(form.opinona_planificada),
-    opinona_real: form.opinona_real === "" ? null : Number(form.opinona_real),
-    producciones_programadas: form.producciones_programadas === "" ? null : Number(form.producciones_programadas),
-    producciones_realizadas: form.producciones_realizadas === "" ? null : Number(form.producciones_realizadas),
+    opinona_planificada: parseDecimalFormValue(form.opinona_planificada),
+    opinona_real: parseDecimalFormValue(form.opinona_real),
+    producciones_programadas: parseDecimalFormValue(form.producciones_programadas),
+    producciones_realizadas: parseDecimalFormValue(form.producciones_realizadas),
     tipo_atraso_adelanto: form.tipo_atraso_adelanto,
-    minutos_atraso_adelanto: form.minutos_atraso_adelanto === "" ? 0 : Number(form.minutos_atraso_adelanto),
+    minutos_atraso_adelanto: parseDecimalFormValue(form.minutos_atraso_adelanto) ?? 0,
     observacion_general: form.observacion_general.trim() ? form.observacion_general : null,
     imagen_reporte_data: form.imagen_reporte_data || null,
     imagen_reporte_mime: form.imagen_reporte_mime || null,
@@ -2584,8 +2586,34 @@ function fileToDataUrl(file: File) {
   });
 }
 
-function valueToFormString(value: number | null) {
+function valueToFormString(value: number | string | null) {
   return value === null || typeof value === "undefined" ? "" : String(value);
+}
+
+function normalizeDecimalInput(value: string) {
+  const normalized = value.replace(/,/g, ".");
+  let result = "";
+  let hasDecimalSeparator = false;
+
+  for (const character of normalized) {
+    if (character >= "0" && character <= "9") {
+      result += character;
+      continue;
+    }
+    if (character === "." && !hasDecimalSeparator) {
+      result += result ? "." : "0.";
+      hasDecimalSeparator = true;
+    }
+  }
+
+  return result;
+}
+
+function parseDecimalFormValue(value: string) {
+  const normalized = normalizeDecimalInput(value);
+  if (!normalized || normalized === "0.") return normalized === "0." ? 0 : null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function dateInputValue(date: Date) {
@@ -2626,9 +2654,9 @@ function emptyDashboard(): DashboardResumen {
 }
 
 function calculateCumplimiento(programadas: string, realizadas: string) {
-  const planned = Number(programadas);
-  const done = Number(realizadas);
-  if (!Number.isFinite(planned) || planned <= 0 || !Number.isFinite(done)) return "Pendiente";
+  const planned = parseDecimalFormValue(programadas);
+  const done = parseDecimalFormValue(realizadas);
+  if (planned === null || done === null || !Number.isFinite(planned) || planned <= 0 || !Number.isFinite(done)) return "Pendiente";
   return `${((done / planned) * 100).toFixed(1)}%`;
 }
 

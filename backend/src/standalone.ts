@@ -104,7 +104,7 @@ function optionalBool(value: unknown, defaultValue = true) {
 
 function optionalNumber(value: unknown) {
   if (value === "" || value === null || typeof value === "undefined") return null;
-  const number = Number(value);
+  const number = Number(typeof value === "string" ? value.replace(",", ".") : value);
   if (!Number.isFinite(number) || number < 0) {
     throw Object.assign(new Error("Valor numerico invalido"), { statusCode: 400 });
   }
