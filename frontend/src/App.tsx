@@ -1,7 +1,5 @@
 import {
   Activity,
-  BarChart3,
-  CalendarClock,
   CheckCircle2,
   Clock3,
   ClipboardList,
@@ -9,11 +7,9 @@ import {
   Trash2,
   Edit3,
   FileDown,
-  Gauge,
   Plus,
   RefreshCw,
   Save,
-  Settings,
   X,
   XCircle
 } from "lucide-react";
@@ -42,7 +38,6 @@ import {
   deleteDetencion,
   downloadDatabaseBackup,
   fetchDashboard,
-  fetchHealth,
   fetchDetenciones,
   fetchInitialConfiguration,
   fetchReporteActual,
@@ -58,7 +53,6 @@ import {
   updateReporte,
   updateTurno,
   updateTurnoHorario,
-  type HealthResponse,
   type DashboardFilters,
   type DashboardResumen,
   type Detencion,
@@ -106,29 +100,6 @@ const dayNames = new Map([
   [6, "Sabado"],
   [7, "Domingo"]
 ]);
-
-const actionCards = [
-  {
-    title: "Abrir reporte del dia",
-    description: "Preparado para registrar produccion y detenciones por turno.",
-    icon: ClipboardList
-  },
-  {
-    title: "Ver informes",
-    description: "Base preparada para consultar reportes historicos.",
-    icon: CalendarClock
-  },
-  {
-    title: "Ver dashboard",
-    description: "Estructura lista para indicadores operacionales.",
-    icon: BarChart3
-  },
-  {
-    title: "Configuracion",
-    description: "Administrar lineas, indicadores, turnos y horarios.",
-    icon: Settings
-  }
-];
 
 const emptyLinea: LineaInput = { nombre: "", activa: true };
 const emptyIndicador: IndicadorInput = { codigo: "", nombre: "", color: "#d9ecfb", orden: 1, activo: true };
@@ -192,7 +163,6 @@ const emptyDetencionForm: DetencionFormState = {
 
 export function App() {
   const [activeSection, setActiveSection] = useState<SectionKey>("reporte");
-  const [health, setHealth] = useState<HealthResponse | null>(null);
   const [configuration, setConfiguration] = useState<ConfigurationState | null>(null);
   const [reporte, setReporte] = useState<Reporte | null>(null);
   const [reporteResumen, setReporteResumen] = useState<ReporteResumen | null>(null);
@@ -544,14 +514,6 @@ export function App() {
     }
   }, [activeSection]);
 
-  const activeSummary = useMemo(() => {
-    return {
-      lineas: configuration?.lineas.filter((linea) => Boolean(linea.activa)).length ?? 0,
-      indicadores: configuration?.indicadores.filter((indicador) => Boolean(indicador.activo)).length ?? 0,
-      turnos: configuration?.turnos.filter((turno) => Boolean(turno.activo)).length ?? 0
-    };
-  }, [configuration]);
-
   const turnosActivos = useMemo(() => {
     return configuration?.turnos.filter((turno) => Boolean(turno.activo)) ?? [];
   }, [configuration]);
@@ -657,137 +619,6 @@ export function App() {
         />
       )}
     </main>
-  );
-}
-
-function HomeView({
-  activeSummary,
-  configuration,
-  health,
-  isLoading,
-  onOpenDashboard,
-  onOpenConfiguration,
-  onOpenReporte
-}: {
-  activeSummary: { lineas: number; indicadores: number; turnos: number };
-  configuration: ConfigurationState | null;
-  health: HealthResponse | null;
-  isLoading: boolean;
-  onOpenDashboard: () => void;
-  onOpenConfiguration: () => void;
-  onOpenReporte: () => void;
-}) {
-  return (
-    <>
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 sm:px-6 lg:grid-cols-[1.5fr_1fr] lg:px-8">
-        <div id="inicio" className="space-y-6">
-          <div className="rounded-lg border border-industrial-100 bg-white p-6 shadow-panel">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-industrial-500">Inicio operacional</p>
-                <h2 className="mt-2 text-xl font-semibold text-industrial-900">Panel base del sistema</h2>
-                <p className="mt-3 max-w-2xl text-base leading-7 text-industrial-600">
-                  Vista inicial para validar frontend, backend y datos maestros cargados desde MySQL local.
-                </p>
-              </div>
-              <div className="rounded-lg bg-industrial-900 px-4 py-3 text-white">
-                <p className="text-xs uppercase text-industrial-200">Estado</p>
-                <p className="mt-1 text-sm font-semibold">{health?.status === "ok" ? "Backend activo" : "Pendiente"}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            {actionCards.map((card) => {
-              const Icon = card.icon;
-
-              return (
-                <button
-                  className="group min-h-36 rounded-lg border border-industrial-100 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-panel focus:outline-none focus:ring-2 focus:ring-industrial-500"
-                  key={card.title}
-                  onClick={
-                    card.title === "Configuracion"
-                      ? onOpenConfiguration
-                      : card.title === "Abrir reporte del dia"
-                        ? onOpenReporte
-                        : card.title === "Ver dashboard"
-                          ? onOpenDashboard
-                          : undefined
-                  }
-                  type="button"
-                >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-md bg-signal-sky text-industrial-700">
-                    <Icon className="h-5 w-5" aria-hidden="true" />
-                  </span>
-                  <span className="mt-4 block text-base font-semibold text-industrial-900">{card.title}</span>
-                  <span className="mt-2 block text-sm leading-6 text-industrial-600">{card.description}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <aside className="space-y-4">
-          <div className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3">
-              <Gauge className="h-5 w-5 text-industrial-500" aria-hidden="true" />
-              <h2 className="text-base font-semibold text-industrial-900">Conexion backend</h2>
-            </div>
-            <div className="mt-4 rounded-md bg-industrial-50 p-4">
-              {isLoading ? (
-                <p className="text-sm text-industrial-600">Consultando servicios iniciales...</p>
-              ) : (
-                <p className="text-sm font-medium text-emerald-700">{health?.message}</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Metric label="Lineas" value={activeSummary.lineas} />
-            <Metric label="Indicadores" value={activeSummary.indicadores} />
-            <Metric label="Turnos" value={activeSummary.turnos} />
-          </div>
-        </aside>
-      </section>
-
-      <section className="mx-auto max-w-7xl px-4 pb-10 sm:px-6 lg:px-8">
-        <div className="grid gap-5 lg:grid-cols-3">
-          <DataPanel title="Lineas activas">
-            {configuration?.lineas.map((linea) => <SimpleRow key={linea.id} label={linea.nombre} />)}
-          </DataPanel>
-
-          <DataPanel title="Indicadores activos">
-            <div className="space-y-3">
-              {configuration?.indicadores.map((indicador) => (
-                <div className="flex items-center justify-between gap-3" key={indicador.id}>
-                  <div>
-                    <p className="text-sm font-semibold text-industrial-900">{indicador.codigo}</p>
-                    <p className="text-sm text-industrial-600">{indicador.nombre}</p>
-                  </div>
-                  <span className="h-4 w-4 rounded-full border border-industrial-100" style={{ backgroundColor: indicador.color }} />
-                </div>
-              ))}
-            </div>
-          </DataPanel>
-
-          <DataPanel title="Turnos y horarios">
-            <div className="space-y-3">
-              {configuration?.horarios.map((horario) => (
-                <div className="rounded-md bg-industrial-50 p-3" key={horario.id}>
-                  <p className="text-sm font-semibold text-industrial-900">
-                    {horario.turno_nombre} - {dayNames.get(horario.dia_semana)}
-                  </p>
-                  <p className="mt-1 text-sm text-industrial-600">
-                    {horario.hora_inicio} a {horario.hora_fin}
-                    {horario.cruza_medianoche ? " - cruza medianoche" : ""}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </DataPanel>
-        </div>
-      </section>
-    </>
   );
 }
 
