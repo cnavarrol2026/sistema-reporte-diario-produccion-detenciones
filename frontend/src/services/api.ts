@@ -1,4 +1,5 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+const API_TIMEOUT_MS = 25000;
 
 function operatorMessage(path: string, status?: number, detail?: string | null) {
   if (detail) return detail;
@@ -9,6 +10,33 @@ function operatorMessage(path: string, status?: number, detail?: string | null) 
   if (status && status >= 500) return "Ocurrio un error en el backend. Revise que MySQL y el servidor esten funcionando.";
   if (path.includes("/pdf")) return "No se pudo generar el PDF. Intente nuevamente.";
   return "No fue posible completar la accion. Intente nuevamente.";
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function fetchWithTimeout(path: string, options?: RequestInit) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers
+      },
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("La conexion con el backend tardo demasiado. Actualice o intente guardar nuevamente.");
+    }
+    throw new Error(operatorMessage(path, 0));
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 export interface HealthResponse {
@@ -250,18 +278,7 @@ interface ApiMessage<T> {
 }
 
 async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers
-      },
-      ...options
-    });
-  } catch {
-    throw new Error(operatorMessage(path, 0));
-  }
+  const response = await fetchWithTimeout(path, options);
 
   const payload = await response.json().catch(() => null);
 
@@ -274,12 +291,7 @@ async function requestJson<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 async function requestBlob(path: string, options?: RequestInit): Promise<Blob> {
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, options);
-  } catch {
-    throw new Error(operatorMessage(path, 0));
-  }
+  const response = await fetchWithTimeout(path, options);
 
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
