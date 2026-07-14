@@ -1,5 +1,7 @@
 import { getDetencionesByReporteId } from "./detencionService.js";
 import { getReporteById, getReporteResumen } from "./reporteService.js";
+import { getCajasByReporteId } from "./cajaService.js";
+import { deflateSync, inflateSync } from "node:zlib";
 
 type PdfFont = "regular" | "bold";
 
@@ -7,6 +9,14 @@ type TableColumn<T> = {
   label: string;
   width: number;
   value: (row: T) => string | number | null | undefined;
+};
+
+type PdfImage = {
+  name: string;
+  width: number;
+  height: number;
+  data: Buffer;
+  filter: "DCTDecode" | "FlateDecode";
 };
 
 const page = {
@@ -55,9 +65,141 @@ function wrapText(value: string | number | null | undefined, maxChars: number, m
   return lines.slice(0, maxLines);
 }
 
+function paethPredictor(left: number, up: number, upLeft: number) {
+  const predictor = left + up - upLeft;
+  const pa = Math.abs(predictor - left);
+  const pb = Math.abs(predictor - up);
+  const pc = Math.abs(predictor - upLeft);
+  if (pa <= pb && pa <= pc) return left;
+  if (pb <= pc) return up;
+  return upLeft;
+}
+
+function parsePngImage(buffer: Buffer): PdfImage | null {
+  const signature = "89504e470d0a1a0a";
+  if (buffer.subarray(0, 8).toString("hex") !== signature) return null;
+
+  let offset = 8;
+  let width = 0;
+  let height = 0;
+  let bitDepth = 0;
+  let colorType = 0;
+  let interlace = 0;
+  const idatParts: Buffer[] = [];
+
+  while (offset + 8 <= buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+    const data = buffer.subarray(offset + 8, offset + 8 + length);
+    offset += 12 + length;
+
+    if (type === "IHDR") {
+      width = data.readUInt32BE(0);
+      height = data.readUInt32BE(4);
+      bitDepth = data[8];
+      colorType = data[9];
+      interlace = data[12];
+    } else if (type === "IDAT") {
+      idatParts.push(data);
+    } else if (type === "IEND") {
+      break;
+    }
+  }
+
+  if (!width || !height || bitDepth !== 8 || interlace !== 0 || idatParts.length === 0) return null;
+  const sourceBpp = colorType === 6 ? 4 : colorType === 2 ? 3 : colorType === 0 ? 1 : 0;
+  if (sourceBpp === 0) return null;
+
+  const inflated = inflateSync(Buffer.concat(idatParts));
+  const rowLength = width * sourceBpp;
+  const unfiltered = Buffer.alloc(rowLength * height);
+  let inputOffset = 0;
+
+  for (let row = 0; row < height; row += 1) {
+    const filter = inflated[inputOffset];
+    inputOffset += 1;
+    const currentRow = unfiltered.subarray(row * rowLength, (row + 1) * rowLength);
+    const previousRow = row > 0 ? unfiltered.subarray((row - 1) * rowLength, row * rowLength) : null;
+
+    for (let column = 0; column < rowLength; column += 1) {
+      const raw = inflated[inputOffset + column];
+      const left = column >= sourceBpp ? currentRow[column - sourceBpp] : 0;
+      const up = previousRow ? previousRow[column] : 0;
+      const upLeft = previousRow && column >= sourceBpp ? previousRow[column - sourceBpp] : 0;
+      let value = raw;
+
+      if (filter === 1) value = raw + left;
+      else if (filter === 2) value = raw + up;
+      else if (filter === 3) value = raw + Math.floor((left + up) / 2);
+      else if (filter === 4) value = raw + paethPredictor(left, up, upLeft);
+      else if (filter !== 0) return null;
+
+      currentRow[column] = value & 0xff;
+    }
+
+    inputOffset += rowLength;
+  }
+
+  const rgb = Buffer.alloc(width * height * 3);
+  for (let pixel = 0; pixel < width * height; pixel += 1) {
+    const sourceIndex = pixel * sourceBpp;
+    const targetIndex = pixel * 3;
+    if (colorType === 0) {
+      rgb[targetIndex] = unfiltered[sourceIndex];
+      rgb[targetIndex + 1] = unfiltered[sourceIndex];
+      rgb[targetIndex + 2] = unfiltered[sourceIndex];
+    } else if (colorType === 2) {
+      rgb[targetIndex] = unfiltered[sourceIndex];
+      rgb[targetIndex + 1] = unfiltered[sourceIndex + 1];
+      rgb[targetIndex + 2] = unfiltered[sourceIndex + 2];
+    } else {
+      const alpha = unfiltered[sourceIndex + 3] / 255;
+      rgb[targetIndex] = Math.round(unfiltered[sourceIndex] * alpha + 255 * (1 - alpha));
+      rgb[targetIndex + 1] = Math.round(unfiltered[sourceIndex + 1] * alpha + 255 * (1 - alpha));
+      rgb[targetIndex + 2] = Math.round(unfiltered[sourceIndex + 2] * alpha + 255 * (1 - alpha));
+    }
+  }
+
+  return { name: "", width, height, data: deflateSync(rgb), filter: "FlateDecode" };
+}
+
+function parseJpegImage(buffer: Buffer): PdfImage | null {
+  if (buffer[0] !== 0xff || buffer[1] !== 0xd8) return null;
+  let offset = 2;
+
+  while (offset + 9 < buffer.length) {
+    if (buffer[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+
+    const marker = buffer[offset + 1];
+    const length = buffer.readUInt16BE(offset + 2);
+    if ([0xc0, 0xc1, 0xc2].includes(marker)) {
+      const height = buffer.readUInt16BE(offset + 5);
+      const width = buffer.readUInt16BE(offset + 7);
+      return { name: "", width, height, data: buffer, filter: "DCTDecode" };
+    }
+    offset += 2 + length;
+  }
+
+  return null;
+}
+
+function imageFromDataUri(dataUri: string | null | undefined, mime: string | null | undefined) {
+  if (!dataUri) return null;
+  const base64 = dataUri.includes(",") ? dataUri.split(",").pop() : dataUri;
+  if (!base64) return null;
+
+  const buffer = Buffer.from(base64, "base64");
+  const image = mime === "image/jpeg" ? parseJpegImage(buffer) : mime === "image/png" ? parsePngImage(buffer) : null;
+  return image;
+}
+
 class SimplePdf {
   private pages: string[][] = [[]];
   private y = page.height - page.margin;
+  private images: PdfImage[] = [];
 
   private get content() {
     return this.pages[this.pages.length - 1];
@@ -85,13 +227,17 @@ class SimplePdf {
     this.content.push(`${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`);
   }
 
+  rect(x: number, y: number, width: number, height: number) {
+    this.content.push(`${x.toFixed(2)} ${y.toFixed(2)} ${width.toFixed(2)} ${height.toFixed(2)} re S`);
+  }
+
   section(title: string) {
-    this.ensureSpace(24);
-    this.moveDown(13);
+    this.ensureSpace(22);
+    this.moveDown(10);
     this.text(title, page.margin, this.y, 9.5, "bold");
     this.moveDown(5);
     this.line(page.margin, this.y, page.margin + contentWidth, this.y);
-    this.moveDown(10);
+    this.moveDown(8);
   }
 
   paragraph(value: string | number | null | undefined, maxLines = 4) {
@@ -106,7 +252,7 @@ class SimplePdf {
 
   infoGrid(items: Array<{ label: string; value: string | number | null | undefined }>) {
     const columnWidth = (contentWidth - 14) / 3;
-    const rowHeight = 24;
+    const rowHeight = 22;
 
     for (let index = 0; index < items.length; index += 3) {
       this.ensureSpace(rowHeight + 5);
@@ -171,6 +317,67 @@ class SimplePdf {
     this.moveDown(6);
   }
 
+  groupedBreakdown(
+    rows: Array<{
+      codigo?: string;
+      nombre: string;
+      minutos: number;
+      detalle_indicadores?: Array<{ codigo: string; nombre: string; minutos: number }>;
+    }>,
+    options: { showEmptyGroups?: boolean } = {}
+  ) {
+    const visibleRows = options.showEmptyGroups ? rows : rows.filter((row) => Number(row.minutos) > 0);
+    if (visibleRows.length === 0) {
+      this.ensureSpace(16);
+      this.text("Sin minutos registrados.", page.margin, this.y, 8);
+      this.moveDown(16);
+      return;
+    }
+
+    visibleRows.forEach((row) => {
+      const detalles = (row.detalle_indicadores ?? []).filter((detalle) => Number(detalle.minutos) > 0);
+      const height = 17 + Math.max(0, detalles.length) * 10 + 5;
+      this.ensureSpace(height);
+      this.text(row.codigo ? `${row.codigo} - ${row.nombre}` : row.nombre, page.margin, this.y, 8, "bold");
+      this.text(`${row.minutos} min`, page.margin + contentWidth - 52, this.y, 8, "bold");
+      this.moveDown(12);
+      if (detalles.length === 0) {
+        this.text("Sin detenciones registradas.", page.margin + 12, this.y, 6.8);
+        this.moveDown(9);
+      } else {
+        detalles.forEach((detalle) => {
+          this.text(`${detalle.codigo} - ${detalle.nombre}`, page.margin + 12, this.y, 6.8);
+          this.text(`${detalle.minutos} min`, page.margin + contentWidth - 52, this.y, 6.8);
+          this.moveDown(10);
+        });
+      }
+      this.line(page.margin, this.y + 3, page.margin + contentWidth, this.y + 3);
+      this.moveDown(5);
+    });
+  }
+
+  image(image: PdfImage, title: string) {
+    const imageName = `Im${this.images.length + 1}`;
+    const maxWidth = contentWidth;
+    const maxHeight = 430;
+    const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+    const drawWidth = image.width * scale;
+    const drawHeight = image.height * scale;
+    const titleHeight = 24;
+    const blockHeight = titleHeight + drawHeight + 12;
+
+    if (blockHeight > this.y - page.bottom) this.addPage();
+    image.name = imageName;
+    this.images.push(image);
+    this.text(title, page.margin, this.y, 9.5, "bold");
+    this.moveDown(14);
+    const x = page.margin + (contentWidth - drawWidth) / 2;
+    const y = this.y - drawHeight;
+    this.content.push(`q ${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)} cm /${imageName} Do Q`);
+    this.rect(x, y, drawWidth, drawHeight);
+    this.y = y - 12;
+  }
+
   build() {
     const pageCount = this.pages.length;
     this.pages.forEach((content, index) => {
@@ -184,6 +391,15 @@ class SimplePdf {
       "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>"
     ];
 
+    const imageObjectIds = new Map<string, number>();
+    this.images.forEach((image) => {
+      const objectId = objects.length + 1;
+      imageObjectIds.set(image.name, objectId);
+      objects.push(
+        `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${image.filter} /Length ${image.data.length} >>\nstream\n${image.data.toString("binary")}\nendstream`
+      );
+    });
+
     const pageObjectIds: number[] = [];
     this.pages.forEach((content) => {
       const stream = content.join("\n");
@@ -191,7 +407,10 @@ class SimplePdf {
       objects.push(`<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream`);
       const pageObjectId = objects.length + 1;
       pageObjectIds.push(pageObjectId);
-      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectId} 0 R >>`);
+      const xObjectResources = Array.from(imageObjectIds.entries())
+        .map(([name, id]) => `/${name} ${id} 0 R`)
+        .join(" ");
+      objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${page.width} ${page.height}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xObjectResources ? ` /XObject << ${xObjectResources} >>` : ""} >> /Contents ${contentObjectId} 0 R >>`);
     });
 
     objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageCount} >>`;
@@ -219,16 +438,17 @@ export async function generateReportePdfBuffer(reporteId: number) {
     throw Object.assign(new Error("Reporte no encontrado"), { statusCode: 404 });
   }
 
-  const [resumen, detenciones] = await Promise.all([
+  const [resumen, detenciones, cajas] = await Promise.all([
     getReporteResumen(reporteId),
-    getDetencionesByReporteId(reporteId)
+    getDetencionesByReporteId(reporteId),
+    getCajasByReporteId(reporteId)
   ]);
 
   const pdf = new SimplePdf();
 
   pdf.text("Reporte Diario de Produccion y Detenciones", page.margin, page.height - page.margin, 14, "bold");
   pdf.text(`Reporte ID ${reporte.id} | Estado ${reporte.estado}`, page.margin, page.height - page.margin - 15, 8);
-  pdf.moveDown(32);
+  pdf.moveDown(28);
 
   pdf.section("Resumen general");
   pdf.infoGrid([
@@ -247,29 +467,56 @@ export async function generateReportePdfBuffer(reporteId: number) {
   ]);
 
   pdf.section("Observacion general");
-  pdf.paragraph(reporte.observacion_general, 4);
+  pdf.paragraph(reporte.observacion_general, 3);
 
   pdf.section("Detenciones del dia");
   pdf.table(
     [
       { label: "Ind.", width: 35, value: (row) => row.indicador },
       { label: "Turno", width: 35, value: (row) => row.turno },
+      { label: "Zona", width: 58, value: (row) => row.zona },
       { label: "Inicio", width: 42, value: (row) => row.inicio },
       { label: "Fin", width: 42, value: (row) => row.fin },
       { label: "Min", width: 30, value: (row) => row.minutos },
-      { label: "Descripcion", width: 220, value: (row) => row.descripcion },
-      { label: "Plan accion", width: 123, value: (row) => row.plan }
+      { label: "Descripcion", width: 190, value: (row) => row.descripcion },
+      { label: "Plan accion", width: 95, value: (row) => row.plan }
     ],
     detenciones.map((detencion) => ({
       indicador: detencion.indicador_codigo,
       turno: detencion.turno_codigo,
+      zona: detencion.zona_nombre,
       inicio: detencion.hora_inicio,
       fin: detencion.hora_fin ?? "-",
       minutos: detencion.minutos_finales ?? detencion.minutos_calculados,
       descripcion: detencion.descripcion,
       plan: detencion.plan_accion ?? "-"
     })),
-    { rowHeight: 28, fontSize: 6.4, maxLines: 2 }
+    { rowHeight: 26, fontSize: 6.2, maxLines: 2 }
+  );
+
+  const reporteImage = imageFromDataUri(reporte.imagen_reporte_data, reporte.imagen_reporte_mime);
+  if (reporteImage) {
+    pdf.section("Captura OPINONA");
+    pdf.image(reporteImage, `Captura OPINONA ${reporte.fecha_reporte}`);
+  }
+
+  pdf.section("Cajas retenidas/rechazadas");
+  pdf.table(
+    [
+      { label: "Tipo", width: 70, value: (row) => row.tipo },
+      { label: "Turno", width: 60, value: (row) => row.turno },
+      { label: "Cantidad", width: 55, value: (row) => row.cantidad },
+      { label: "ID producto", width: 105, value: (row) => row.productoId },
+      { label: "Producto", width: 237, value: (row) => row.producto }
+    ],
+    cajas.map((caja) => ({
+      tipo: caja.tipo,
+      turno: caja.turno_codigo,
+      cantidad: caja.cantidad,
+      productoId: caja.producto_id,
+      producto: caja.producto_nombre
+    })),
+    { rowHeight: 20, fontSize: 6.8, maxLines: 1 }
   );
 
   pdf.section("Minutos por indicador");
@@ -280,22 +527,35 @@ export async function generateReportePdfBuffer(reporteId: number) {
       { label: "Min", width: 97, value: (row) => row.minutos }
     ],
     resumen.total_por_indicador
+      .filter((item) => Number(item.minutos) > 0)
       .map((item) => ({ codigo: item.codigo, nombre: item.nombre, minutos: item.minutos }))
       .sort((a, b) => Number(b.minutos) - Number(a.minutos) || String(a.codigo).localeCompare(String(b.codigo))),
     { rowHeight: 20, fontSize: 7, maxLines: 1 }
   );
 
   pdf.section("Minutos por turno");
-  pdf.table(
-    [
-      { label: "Turno", width: 70, value: (row) => row.codigo },
-      { label: "Nombre", width: 360, value: (row) => row.nombre },
-      { label: "Min", width: 97, value: (row) => row.minutos }
-    ],
+  pdf.groupedBreakdown(
     resumen.total_por_turno
-      .map((item) => ({ codigo: item.codigo, nombre: item.nombre, minutos: item.minutos }))
-      .sort((a, b) => Number(b.minutos) - Number(a.minutos) || String(a.codigo).localeCompare(String(b.codigo))),
-    { rowHeight: 20, fontSize: 7, maxLines: 1 }
+      .map((item) => ({
+        codigo: item.codigo,
+        nombre: item.nombre,
+        minutos: Number(item.minutos),
+        detalle_indicadores: item.detalle_indicadores ?? []
+      }))
+      .sort((a, b) => String(a.codigo).localeCompare(String(b.codigo))),
+    { showEmptyGroups: true }
+  );
+
+  pdf.section("Minutos por zona");
+  pdf.groupedBreakdown(
+    resumen.total_por_zona
+      .filter((item) => Number(item.minutos) > 0)
+      .map((item) => ({
+        nombre: item.nombre,
+        minutos: Number(item.minutos),
+        detalle_indicadores: item.detalle_indicadores ?? []
+      }))
+      .sort((a, b) => Number(b.minutos) - Number(a.minutos) || String(a.nombre).localeCompare(String(b.nombre)))
   );
 
   return pdf.build();
