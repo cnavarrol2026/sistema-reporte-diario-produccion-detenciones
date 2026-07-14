@@ -1368,11 +1368,11 @@ function ReporteDiaView({
       setImageError("La imagen no debe superar 2 MB.");
       return;
     }
-    const dataUrl = await fileToDataUrl(file);
+    const image = await fileToPdfCompatibleDataUrl(file);
     updateForm({
-      imagen_reporte_data: dataUrl,
-      imagen_reporte_mime: file.type,
-      imagen_reporte_nombre: file.name
+      imagen_reporte_data: image.dataUrl,
+      imagen_reporte_mime: image.mime,
+      imagen_reporte_nombre: image.name
     });
   }
 
@@ -1571,7 +1571,7 @@ function ReporteDiaView({
                 />
               </div>
             ) : (
-              <p className="mt-2 text-sm text-industrial-600">Esta captura OPINONA se mostrara en el informe online, debajo de detenciones. No se incluira en el PDF.</p>
+              <p className="mt-2 text-sm text-industrial-600">Esta captura OPINONA se mostrara en el informe online y en el PDF del reporte.</p>
             )}
           </div>
         </fieldset>
@@ -3155,6 +3155,43 @@ function fileToDataUrl(file: File) {
     reader.onload = () => resolve(String(reader.result));
     reader.onerror = () => reject(new Error("No fue posible leer la imagen seleccionada."));
     reader.readAsDataURL(file);
+  });
+}
+
+async function fileToPdfCompatibleDataUrl(file: File) {
+  const sourceDataUrl = await fileToDataUrl(file);
+  const image = await loadImageElement(sourceDataUrl);
+  const maxWidth = 1400;
+  const scale = Math.min(1, maxWidth / image.naturalWidth);
+  const width = Math.max(1, Math.round(image.naturalWidth * scale));
+  const height = Math.max(1, Math.round(image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("No fue posible preparar la captura para el PDF.");
+  }
+
+  context.fillStyle = "#ffffff";
+  context.fillRect(0, 0, width, height);
+  context.drawImage(image, 0, 0, width, height);
+
+  const normalizedName = file.name.replace(/\.[^.]+$/, "") || "captura-opinona";
+  return {
+    dataUrl: canvas.toDataURL("image/jpeg", 0.88),
+    mime: "image/jpeg",
+    name: `${normalizedName}.jpg`
+  };
+}
+
+function loadImageElement(source: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("No fue posible preparar la imagen seleccionada."));
+    image.src = source;
   });
 }
 
