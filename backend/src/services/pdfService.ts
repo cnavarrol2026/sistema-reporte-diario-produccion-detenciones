@@ -1,7 +1,6 @@
 import { getDetencionesByReporteId } from "./detencionService.js";
 import { getReporteById, getReporteResumen } from "./reporteService.js";
 import { getCajasByReporteId } from "./cajaService.js";
-import { deflateSync, inflateSync } from "node:zlib";
 
 type PdfFont = "regular" | "bold";
 
@@ -15,8 +14,9 @@ type PdfImage = {
   name: string;
   width: number;
   height: number;
-  data: Buffer;
+  data: Uint8Array;
   filter: "DCTDecode" | "FlateDecode";
+  decodeParms?: string;
 };
 
 const page = {
@@ -65,16 +65,6 @@ function wrapText(value: string | number | null | undefined, maxChars: number, m
   return lines.slice(0, maxLines);
 }
 
-function paethPredictor(left: number, up: number, upLeft: number) {
-  const predictor = left + up - upLeft;
-  const pa = Math.abs(predictor - left);
-  const pb = Math.abs(predictor - up);
-  const pc = Math.abs(predictor - upLeft);
-  if (pa <= pb && pa <= pc) return left;
-  if (pb <= pc) return up;
-  return upLeft;
-}
-
 function parsePngImage(buffer: Buffer): PdfImage | null {
   const signature = "89504e470d0a1a0a";
   if (buffer.subarray(0, 8).toString("hex") !== signature) return null;
@@ -107,60 +97,19 @@ function parsePngImage(buffer: Buffer): PdfImage | null {
   }
 
   if (!width || !height || bitDepth !== 8 || interlace !== 0 || idatParts.length === 0) return null;
-  const sourceBpp = colorType === 6 ? 4 : colorType === 2 ? 3 : colorType === 0 ? 1 : 0;
-  if (sourceBpp === 0) return null;
-
-  const inflated = inflateSync(Buffer.concat(idatParts));
-  const rowLength = width * sourceBpp;
-  const unfiltered = Buffer.alloc(rowLength * height);
-  let inputOffset = 0;
-
-  for (let row = 0; row < height; row += 1) {
-    const filter = inflated[inputOffset];
-    inputOffset += 1;
-    const currentRow = unfiltered.subarray(row * rowLength, (row + 1) * rowLength);
-    const previousRow = row > 0 ? unfiltered.subarray((row - 1) * rowLength, row * rowLength) : null;
-
-    for (let column = 0; column < rowLength; column += 1) {
-      const raw = inflated[inputOffset + column];
-      const left = column >= sourceBpp ? currentRow[column - sourceBpp] : 0;
-      const up = previousRow ? previousRow[column] : 0;
-      const upLeft = previousRow && column >= sourceBpp ? previousRow[column - sourceBpp] : 0;
-      let value = raw;
-
-      if (filter === 1) value = raw + left;
-      else if (filter === 2) value = raw + up;
-      else if (filter === 3) value = raw + Math.floor((left + up) / 2);
-      else if (filter === 4) value = raw + paethPredictor(left, up, upLeft);
-      else if (filter !== 0) return null;
-
-      currentRow[column] = value & 0xff;
-    }
-
-    inputOffset += rowLength;
+  const colors = colorType === 2 ? 3 : colorType === 0 ? 1 : 0;
+  if (colors > 0) {
+    return {
+      name: "",
+      width,
+      height,
+      data: Buffer.concat(idatParts),
+      filter: "FlateDecode",
+      decodeParms: `/DecodeParms << /Predictor 15 /Colors ${colors} /BitsPerComponent 8 /Columns ${width} >>`
+    };
   }
 
-  const rgb = Buffer.alloc(width * height * 3);
-  for (let pixel = 0; pixel < width * height; pixel += 1) {
-    const sourceIndex = pixel * sourceBpp;
-    const targetIndex = pixel * 3;
-    if (colorType === 0) {
-      rgb[targetIndex] = unfiltered[sourceIndex];
-      rgb[targetIndex + 1] = unfiltered[sourceIndex];
-      rgb[targetIndex + 2] = unfiltered[sourceIndex];
-    } else if (colorType === 2) {
-      rgb[targetIndex] = unfiltered[sourceIndex];
-      rgb[targetIndex + 1] = unfiltered[sourceIndex + 1];
-      rgb[targetIndex + 2] = unfiltered[sourceIndex + 2];
-    } else {
-      const alpha = unfiltered[sourceIndex + 3] / 255;
-      rgb[targetIndex] = Math.round(unfiltered[sourceIndex] * alpha + 255 * (1 - alpha));
-      rgb[targetIndex + 1] = Math.round(unfiltered[sourceIndex + 1] * alpha + 255 * (1 - alpha));
-      rgb[targetIndex + 2] = Math.round(unfiltered[sourceIndex + 2] * alpha + 255 * (1 - alpha));
-    }
-  }
-
-  return { name: "", width, height, data: deflateSync(rgb), filter: "FlateDecode" };
+  return null;
 }
 
 function parseJpegImage(buffer: Buffer): PdfImage | null {
@@ -396,7 +345,7 @@ class SimplePdf {
       const objectId = objects.length + 1;
       imageObjectIds.set(image.name, objectId);
       objects.push(
-        `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${image.filter} /Length ${image.data.length} >>\nstream\n${image.data.toString("binary")}\nendstream`
+        `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /${image.filter} ${image.decodeParms ?? ""} /Length ${image.data.length} >>\nstream\n${Buffer.from(image.data).toString("latin1")}\nendstream`
       );
     });
 
@@ -494,10 +443,19 @@ export async function generateReportePdfBuffer(reporteId: number) {
     { rowHeight: 26, fontSize: 6.2, maxLines: 2 }
   );
 
-  const reporteImage = imageFromDataUri(reporte.imagen_reporte_data, reporte.imagen_reporte_mime);
+  let reporteImage: PdfImage | null = null;
+  try {
+    reporteImage = imageFromDataUri(reporte.imagen_reporte_data, reporte.imagen_reporte_mime);
+  } catch {
+    reporteImage = null;
+  }
+
   if (reporteImage) {
     pdf.section("Captura OPINONA");
     pdf.image(reporteImage, `Captura OPINONA ${reporte.fecha_reporte}`);
+  } else if (reporte.imagen_reporte_nombre) {
+    pdf.section("Captura OPINONA");
+    pdf.paragraph(`Captura registrada: ${reporte.imagen_reporte_nombre}. No fue posible incrustarla en este PDF.`, 2);
   }
 
   pdf.section("Cajas retenidas/rechazadas");
