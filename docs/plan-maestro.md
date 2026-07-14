@@ -153,6 +153,17 @@ Reglas aplicadas:
 - El ranking muestra las detenciones mas largas del periodo.
 - El frontend usa `Recharts` para graficos responsivos.
 
+## Avance agregado: cajas retenidas/rechazadas
+
+El Reporte del Dia permite registrar opcionalmente cajas retenidas o rechazadas:
+
+- La seccion se despliega mediante checkbox cuando aplica.
+- Cada linea registra tipo, cantidad de cajas, ID de producto, nombre de producto y turno.
+- Los datos se guardan en MySQL en `cajas_retenidas_rechazadas`.
+- Los registros se pueden crear, editar y eliminar mientras el reporte esta abierto.
+- Los informes online muestran las cajas en modo solo lectura.
+- Pendiente para el cierre de PDF: incluir esta seccion en el PDF ejecutivo cuando se agrupen los cambios finales del PDF.
+
 ## Siguiente paso recomendado
 
 ## Pulido final y preparacion para pruebas

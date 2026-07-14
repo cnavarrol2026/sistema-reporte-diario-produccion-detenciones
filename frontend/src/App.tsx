@@ -27,6 +27,7 @@ import {
 } from "recharts";
 import {
   createIndicador,
+  createCaja,
   createDetencion,
   createLinea,
   createTurno,
@@ -36,8 +37,10 @@ import {
   deactivateTurno,
   deactivateTurnoHorario,
   deleteDetencion,
+  deleteCaja,
   downloadDatabaseBackup,
   fetchDashboard,
+  fetchCajas,
   fetchDetenciones,
   fetchInitialConfiguration,
   fetchReporteActual,
@@ -48,6 +51,7 @@ import {
   downloadReportePdf,
   iniciarReporte,
   updateIndicador,
+  updateCaja,
   updateDetencion,
   updateLinea,
   updateReporte,
@@ -55,6 +59,9 @@ import {
   updateTurnoHorario,
   type DashboardFilters,
   type DashboardResumen,
+  type CajaRetenidaRechazada,
+  type CajaRetenidaRechazadaInput,
+  type CajaTipo,
   type Detencion,
   type DetencionInput,
   type Indicador,
@@ -161,6 +168,22 @@ const emptyDetencionForm: DetencionFormState = {
   plan_accion: ""
 };
 
+interface CajaFormState {
+  tipo: CajaTipo;
+  cantidad: string;
+  producto_id: string;
+  producto_nombre: string;
+  turno_id: string;
+}
+
+const emptyCajaForm: CajaFormState = {
+  tipo: "Retenida",
+  cantidad: "1",
+  producto_id: "",
+  producto_nombre: "",
+  turno_id: ""
+};
+
 export function App() {
   const [activeSection, setActiveSection] = useState<SectionKey>("reporte");
   const [configuration, setConfiguration] = useState<ConfigurationState | null>(null);
@@ -168,6 +191,7 @@ export function App() {
   const [reporteResumen, setReporteResumen] = useState<ReporteResumen | null>(null);
   const [reporteForm, setReporteForm] = useState<ReporteFormState>(emptyReporteForm);
   const [detenciones, setDetenciones] = useState<Detencion[]>([]);
+  const [cajas, setCajas] = useState<CajaRetenidaRechazada[]>([]);
   const [reportesFinalizados, setReportesFinalizados] = useState<ReporteFinalizadoListItem[]>([]);
   const [informeSeleccionado, setInformeSeleccionado] = useState<ReporteInforme | null>(null);
   const [isLoadingInformes, setIsLoadingInformes] = useState(false);
@@ -188,6 +212,7 @@ export function App() {
     if (!reporteResponse) {
       setReporteForm(emptyReporteForm);
       setDetenciones([]);
+      setCajas([]);
       setReporteResumen(null);
       lastReportSignature.current = "";
       return;
@@ -196,11 +221,13 @@ export function App() {
     const nextForm = reporteToForm(reporteResponse);
     setReporteForm(nextForm);
     lastReportSignature.current = JSON.stringify(reporteToPayload(nextForm));
-    const [detencionesResponse, resumenResponse] = await Promise.all([
+    const [detencionesResponse, cajasResponse, resumenResponse] = await Promise.all([
       fetchDetenciones(reporteResponse.id),
+      fetchCajas(reporteResponse.id),
       fetchReporteResumen(reporteResponse.id)
     ]);
     setDetenciones(detencionesResponse);
+    setCajas(cajasResponse);
     setReporteResumen(resumenResponse);
   }
 
@@ -285,6 +312,11 @@ export function App() {
     ]);
     setDetenciones(detencionesResponse);
     setReporteResumen(resumenResponse);
+  }
+
+  async function reloadCajas(reporteId = reporte?.id) {
+    if (!reporteId) return;
+    setCajas(await fetchCajas(reporteId));
   }
 
   async function loadInformes(filters: ReporteFinalizadoFilters = {}) {
@@ -412,6 +444,7 @@ export function App() {
       setReporteResumen(null);
       setReporteForm(emptyReporteForm);
       setDetenciones([]);
+      setCajas([]);
       lastReportSignature.current = "";
       setReportSaveStatus("saved");
       setMessage(`Reporte ${finalized.reporte.id} finalizado correctamente. El PDF queda disponible en Informes.`);
@@ -459,6 +492,45 @@ export function App() {
       setMessage("Detencion eliminada correctamente");
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : "Error al eliminar");
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function saveCaja(input: CajaRetenidaRechazadaInput, cajaId?: number) {
+    if (!reporte) return;
+    setIsSaving(true);
+    setMessage("Guardando...");
+    setError(null);
+    try {
+      if (cajaId) {
+        await updateCaja(cajaId, input);
+      } else {
+        await createCaja(reporte.id, input);
+      }
+      await reloadCajas(reporte.id);
+      setReporte(await fetchReporteActual());
+      setMessage("Registro de cajas guardado correctamente");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Error al guardar cajas");
+      setMessage(null);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function removeCaja(cajaId: number) {
+    setIsSaving(true);
+    setMessage("Guardando...");
+    setError(null);
+    try {
+      await deleteCaja(cajaId);
+      await reloadCajas();
+      setReporte(await fetchReporteActual());
+      setMessage("Registro de cajas eliminado correctamente");
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Error al eliminar cajas");
       setMessage(null);
     } finally {
       setIsSaving(false);
@@ -542,12 +614,15 @@ export function App() {
 
       {activeSection === "reporte" ? (
         <ReporteDiaView
+          cajas={cajas}
           configuration={configuration}
           detenciones={detenciones}
           isSaving={isSaving}
           liveNow={liveNow}
+          onDeleteCaja={removeCaja}
           onDeleteDetencion={removeDetencion}
           onFinalizeReporte={finalizeCurrentReporte}
+          onSaveCaja={saveCaja}
           onSaveDetencion={saveDetencion}
           onFormChange={setReporteForm}
           onStartReporte={startNewReporte}
@@ -1000,7 +1075,7 @@ function InformeDetalleView({
   onBack: () => void;
   onDownloadPdf: () => Promise<void>;
 }) {
-  const { reporte, resumen, detenciones } = informe;
+  const { reporte, resumen, detenciones, cajas } = informe;
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -1058,6 +1133,15 @@ function InformeDetalleView({
           <p className="mt-4 rounded-md bg-industrial-50 p-4 text-sm text-industrial-600">Este reporte no registro detenciones.</p>
         ) : (
           <InformeDetencionesList detenciones={detenciones} />
+        )}
+      </article>
+
+      <article className="mb-6 rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+        <h3 className="text-lg font-semibold text-industrial-900">Cajas retenidas/rechazadas</h3>
+        {cajas.length === 0 ? (
+          <p className="mt-4 rounded-md bg-industrial-50 p-4 text-sm text-industrial-600">Este reporte no registro cajas retenidas o rechazadas.</p>
+        ) : (
+          <InformeCajasList cajas={cajas} />
         )}
       </article>
 
@@ -1143,14 +1227,63 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
   );
 }
 
+function InformeCajasList({ cajas }: { cajas: CajaRetenidaRechazada[] }) {
+  return (
+    <div className="mt-5">
+      <div className="hidden overflow-hidden rounded-lg border border-industrial-100 md:block">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="bg-industrial-50 text-xs uppercase text-industrial-500">
+            <tr>
+              {["Tipo", "Cantidad", "ID producto", "Producto", "Turno"].map((column) => (
+                <th className="px-4 py-3 font-semibold" key={column}>{column}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-industrial-100">
+            {cajas.map((caja) => (
+              <tr key={caja.id}>
+                <td className="px-4 py-3"><CajaTipoPill tipo={caja.tipo} /></td>
+                <td className="px-4 py-3 font-semibold text-industrial-900">{caja.cantidad}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.producto_id}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.producto_nombre}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.turno_nombre}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {cajas.map((caja) => (
+          <article className="rounded-lg border border-industrial-100 bg-white p-4 shadow-sm" key={caja.id}>
+            <div className="flex items-start justify-between gap-3">
+              <CajaTipoPill tipo={caja.tipo} />
+              <p className="text-lg font-semibold text-industrial-900">{caja.cantidad} cajas</p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <SmallFact label="Turno" value={caja.turno_nombre} />
+              <SmallFact label="ID producto" value={caja.producto_id} />
+            </div>
+            <p className="mt-4 text-sm font-semibold text-industrial-900">Producto</p>
+            <p className="mt-1 text-sm text-industrial-700">{caja.producto_nombre}</p>
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ReporteDiaView({
+  cajas,
   configuration,
   detenciones,
   isSaving,
   liveNow,
+  onDeleteCaja,
   onDeleteDetencion,
   onFinalizeReporte,
   onFormChange,
+  onSaveCaja,
   onSaveDetencion,
   onStartReporte,
   reportSaveStatus,
@@ -1158,13 +1291,16 @@ function ReporteDiaView({
   reporteForm,
   reporteResumen
 }: {
+  cajas: CajaRetenidaRechazada[];
   configuration: ConfigurationState | null;
   detenciones: Detencion[];
   isSaving: boolean;
   liveNow: Date;
+  onDeleteCaja: (id: number) => Promise<void>;
   onDeleteDetencion: (id: number) => Promise<void>;
   onFinalizeReporte: () => Promise<void>;
   onFormChange: (form: ReporteFormState) => void;
+  onSaveCaja: (input: CajaRetenidaRechazadaInput, cajaId?: number) => Promise<void>;
   onSaveDetencion: (input: DetencionInput, detencionId?: number) => Promise<void>;
   onStartReporte: (fechaReporte: string) => Promise<void>;
   reportSaveStatus: "idle" | "saving" | "saved" | "error";
@@ -1173,13 +1309,17 @@ function ReporteDiaView({
   reporteResumen: ReporteResumen | null;
 }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCajaModalOpen, setIsCajaModalOpen] = useState(false);
+  const [showCajaSection, setShowCajaSection] = useState(false);
   const [editingDetencion, setEditingDetencion] = useState<Detencion | null>(null);
+  const [editingCaja, setEditingCaja] = useState<CajaRetenidaRechazada | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [startReportDate, setStartReportDate] = useState(() => dateInputValue(new Date()));
   const cumplimiento = calculateCumplimiento(reporteForm.producciones_programadas, reporteForm.producciones_realizadas);
   const turnoActual = getTurnoActual(configuration?.horarios ?? []);
   const isFinalizado = reporte?.estado === "finalizado";
   const liveSummary = buildLiveSummary(detenciones, reporte?.fecha_reporte, liveNow, configuration, reporteResumen);
+  const shouldShowCajaSection = showCajaSection || cajas.length > 0;
 
   function updateForm(next: Partial<ReporteFormState>) {
     onFormChange({ ...reporteForm, ...next });
@@ -1438,6 +1578,53 @@ function ReporteDiaView({
         />
       </article>
 
+      <article className="mt-6 rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h3 className="text-lg font-semibold text-industrial-900">Cajas retenidas/rechazadas</h3>
+            <p className="mt-1 text-sm text-industrial-600">
+              Registra cajas solo cuando exista una retencion o rechazo de producto durante el turno.
+            </p>
+            <label className="mt-4 inline-flex items-center gap-3 text-sm font-semibold text-industrial-800">
+              <input
+                checked={shouldShowCajaSection}
+                className="h-4 w-4 rounded border-industrial-200 text-industrial-900 focus:ring-industrial-400"
+                disabled={isFinalizado || cajas.length > 0}
+                onChange={(event) => setShowCajaSection(event.target.checked)}
+                type="checkbox"
+              />
+              Hubo cajas retenidas o rechazadas
+            </label>
+          </div>
+          {shouldShowCajaSection ? (
+            <button
+              className="app-primary-button inline-flex min-h-11 items-center justify-center gap-2 rounded-md bg-industrial-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={isFinalizado || !reporte}
+              onClick={() => {
+                setEditingCaja(null);
+                setIsCajaModalOpen(true);
+              }}
+              type="button"
+            >
+              <Plus className="h-4 w-4" aria-hidden="true" />
+              Agregar linea
+            </button>
+          ) : null}
+        </div>
+
+        {shouldShowCajaSection ? (
+          <CajasList
+            cajas={cajas}
+            onDelete={onDeleteCaja}
+            onEdit={(caja) => {
+              setEditingCaja(caja);
+              setIsCajaModalOpen(true);
+            }}
+            readOnly={isFinalizado}
+          />
+        ) : null}
+      </article>
+
       <section className="mt-6">
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-industrial-900">Resumen de minutos</h3>
@@ -1473,6 +1660,23 @@ function ReporteDiaView({
             setEditingDetencion(null);
           }}
           reporteFecha={reporte.fecha_reporte}
+          turnos={(configuration?.turnos ?? []).filter((turno) => Boolean(turno.activo))}
+        />
+      ) : null}
+
+      {isCajaModalOpen && reporte ? (
+        <CajaModal
+          caja={editingCaja}
+          isSaving={isSaving}
+          onClose={() => {
+            setIsCajaModalOpen(false);
+            setEditingCaja(null);
+          }}
+          onSave={async (input, id) => {
+            await onSaveCaja(input, id);
+            setIsCajaModalOpen(false);
+            setEditingCaja(null);
+          }}
           turnos={(configuration?.turnos ?? []).filter((turno) => Boolean(turno.activo))}
         />
       ) : null}
@@ -1596,6 +1800,204 @@ function DetencionModal({
             Guardar
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function CajaModal({
+  caja,
+  isSaving,
+  onClose,
+  onSave,
+  turnos
+}: {
+  caja: CajaRetenidaRechazada | null;
+  isSaving: boolean;
+  onClose: () => void;
+  onSave: (input: CajaRetenidaRechazadaInput, id?: number) => Promise<void>;
+  turnos: Turno[];
+}) {
+  const [form, setForm] = useState<CajaFormState>({
+    tipo: caja?.tipo ?? "Retenida",
+    cantidad: caja ? String(caja.cantidad) : "1",
+    producto_id: caja?.producto_id ?? "",
+    producto_nombre: caja?.producto_nombre ?? "",
+    turno_id: caja ? String(caja.turno_id) : String(turnos[0]?.id ?? "")
+  });
+
+  function updateForm(next: Partial<CajaFormState>) {
+    setForm({ ...form, ...next });
+  }
+
+  const cantidad = Number(form.cantidad);
+  const canSave = Boolean(
+    form.tipo &&
+    form.turno_id &&
+    Number.isInteger(cantidad) &&
+    cantidad > 0 &&
+    form.producto_id.trim() &&
+    form.producto_nombre.trim()
+  );
+
+  return (
+    <div className="app-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-industrial-900/40 px-4 py-6">
+      <div className="app-modal-panel max-h-[92dvh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-panel">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-industrial-900">
+              {caja ? "Editar linea de cajas" : "Agregar cajas retenidas/rechazadas"}
+            </h3>
+            <p className="mt-1 text-sm text-industrial-600">Registra cantidad, producto y turno asociado.</p>
+          </div>
+          <button className="rounded-md p-2 text-industrial-500 hover:bg-industrial-50" onClick={onClose} type="button">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <SelectInput
+            label="Tipo"
+            onChange={(tipo) => updateForm({ tipo: tipo as CajaTipo })}
+            options={[
+              { label: "Retenida", value: "Retenida" },
+              { label: "Rechazada", value: "Rechazada" }
+            ]}
+            value={form.tipo}
+          />
+          <SelectInput
+            label="Turno"
+            onChange={(turno_id) => updateForm({ turno_id })}
+            options={turnos.map((turno) => ({ label: turno.nombre, value: String(turno.id) }))}
+            value={form.turno_id}
+          />
+          <label className="block text-sm font-medium text-industrial-700">
+            Cantidad de cajas
+            <input
+              className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+              min={1}
+              onChange={(event) => updateForm({ cantidad: event.target.value })}
+              step={1}
+              type="number"
+              value={form.cantidad}
+            />
+          </label>
+          <label className="block text-sm font-medium text-industrial-700">
+            ID producto
+            <input
+              className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+              onChange={(event) => updateForm({ producto_id: event.target.value })}
+              value={form.producto_id}
+            />
+          </label>
+          <label className="block text-sm font-medium text-industrial-700 sm:col-span-2">
+            Nombre producto
+            <input
+              className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
+              onChange={(event) => updateForm({ producto_nombre: event.target.value })}
+              value={form.producto_nombre}
+            />
+          </label>
+        </div>
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <button className="app-secondary-button min-h-11 rounded-md border border-industrial-100 px-4 text-sm font-semibold text-industrial-700" onClick={onClose} type="button">
+            Cancelar
+          </button>
+          <button
+            className="app-primary-button min-h-11 rounded-md bg-industrial-900 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!canSave || isSaving}
+            onClick={() =>
+              onSave(
+                {
+                  cantidad,
+                  producto_id: form.producto_id.trim(),
+                  producto_nombre: form.producto_nombre.trim(),
+                  tipo: form.tipo,
+                  turno_id: Number(form.turno_id)
+                },
+                caja?.id
+              )
+            }
+            type="button"
+          >
+            {isSaving ? "Guardando..." : "Guardar"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CajasList({
+  cajas,
+  onDelete,
+  onEdit,
+  readOnly
+}: {
+  cajas: CajaRetenidaRechazada[];
+  onDelete: (id: number) => Promise<void>;
+  onEdit: (caja: CajaRetenidaRechazada) => void;
+  readOnly?: boolean;
+}) {
+  if (cajas.length === 0) {
+    return <p className="mt-5 rounded-md bg-industrial-50 p-4 text-sm text-industrial-600">No hay cajas retenidas o rechazadas registradas.</p>;
+  }
+
+  return (
+    <div className="mt-5">
+      <div className="hidden overflow-hidden rounded-lg border border-industrial-100 md:block">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead className="bg-industrial-50 text-xs uppercase text-industrial-500">
+            <tr>
+              {["Tipo", "Cantidad", "ID producto", "Producto", "Turno", ...(readOnly ? [] : ["Acciones"])].map((column) => (
+                <th className="px-4 py-3 font-semibold" key={column}>{column}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-industrial-100">
+            {cajas.map((caja) => (
+              <tr key={caja.id}>
+                <td className="px-4 py-3"><CajaTipoPill tipo={caja.tipo} /></td>
+                <td className="px-4 py-3 font-semibold text-industrial-900">{caja.cantidad}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.producto_id}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.producto_nombre}</td>
+                <td className="px-4 py-3 text-industrial-700">{caja.turno_nombre}</td>
+                {!readOnly ? (
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <EditButton onClick={() => onEdit(caja)} />
+                      <DeleteButton onClick={() => onDelete(caja.id)} />
+                    </div>
+                  </td>
+                ) : null}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="space-y-3 md:hidden">
+        {cajas.map((caja) => (
+          <article className="rounded-lg border border-industrial-100 bg-white p-4 shadow-sm" key={caja.id}>
+            <div className="flex items-start justify-between gap-3">
+              <CajaTipoPill tipo={caja.tipo} />
+              <p className="text-lg font-semibold text-industrial-900">{caja.cantidad} cajas</p>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <SmallFact label="Turno" value={caja.turno_nombre} />
+              <SmallFact label="ID producto" value={caja.producto_id} />
+            </div>
+            <p className="mt-4 text-sm font-semibold text-industrial-900">Producto</p>
+            <p className="mt-1 text-sm text-industrial-700">{caja.producto_nombre}</p>
+            {!readOnly ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <EditButton onClick={() => onEdit(caja)} />
+                <DeleteButton onClick={() => onDelete(caja.id)} />
+              </div>
+            ) : null}
+          </article>
+        ))}
       </div>
     </div>
   );
@@ -2429,6 +2831,18 @@ function IndicatorPill({ detencion }: { detencion: Detencion }) {
   return (
     <span className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold text-industrial-900" style={{ backgroundColor: detencion.indicador_color }}>
       {detencion.indicador_codigo} - {detencion.indicador_nombre}
+    </span>
+  );
+}
+
+function CajaTipoPill({ tipo }: { tipo: CajaTipo }) {
+  const className = tipo === "Rechazada"
+    ? "bg-red-50 text-red-700"
+    : "bg-amber-50 text-amber-700";
+
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${className}`}>
+      {tipo}
     </span>
   );
 }

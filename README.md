@@ -105,6 +105,7 @@ SOURCE C:/xampp/htdocs/Sistema Web Reporte Diario/reporte-detenciones/database/m
 - Reporte del Dia: reporte abierto, autosave, producciones, OPINONA y observacion.
 - Imagen del reporte: JPG/PNG obligatoria para finalizar, visible en informe online y excluida del PDF.
 - Detenciones: crear, editar, eliminar, calculo de minutos y cruce de medianoche.
+- Cajas retenidas/rechazadas: registro opcional por cantidad, producto y turno. Visible en Reporte del Dia e Informes. Pendiente de incorporar al PDF en el bloque final de cambios de PDF.
 - Finalizacion: valida campos obligatorios, bloquea detenciones abiertas y congela minutos finales.
 - Informes: consulta online de reportes finalizados y descarga de PDF.
 - Dashboard: filtros por fecha, linea y turno, graficos y ranking.
@@ -116,10 +117,11 @@ SOURCE C:/xampp/htdocs/Sistema Web Reporte Diario/reporte-detenciones/database/m
 3. Completar datos generales.
 4. Cargar imagen JPG/PNG del reporte.
 5. Agregar detenciones cerradas o abiertas.
-6. Cerrar todas las detenciones antes de finalizar.
-7. Presionar `Finalizar reporte`.
-8. Descargar el PDF desde `Informes` cuando se necesite.
-9. Revisar historicos y dashboard.
+6. Si corresponde, marcar cajas retenidas/rechazadas y registrar sus lineas.
+7. Cerrar todas las detenciones antes de finalizar.
+8. Presionar `Finalizar reporte`.
+9. Descargar el PDF desde `Informes` cuando se necesite.
+10. Revisar historicos y dashboard.
 
 ## Despliegue Cloudflare
 

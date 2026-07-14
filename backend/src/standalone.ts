@@ -4,6 +4,7 @@ import { env } from "./config/env.js";
 import { testDatabaseConnection } from "./db/mysql.js";
 import { generateDatabaseBackupSql } from "./services/databaseBackupService.js";
 import { getDashboardResumen } from "./services/dashboardService.js";
+import { createCaja, deleteCaja, getCajasByReporteId, updateCaja } from "./services/cajaService.js";
 import {
   createIndicador,
   createLinea,
@@ -34,6 +35,7 @@ import {
   updateReporte
 } from "./services/reporteService.js";
 import type { DetencionInput } from "./types/detencion.js";
+import type { CajaRetenidaRechazadaInput, CajaTipo } from "./types/caja.js";
 import type { IndicadorInput, LineaInput, TurnoHorarioInput, TurnoInput } from "./types/configuration.js";
 import type { ReporteUpdateInput, TipoAtrasoAdelanto } from "./types/reporte.js";
 import type { ReporteFinalizadoFilters } from "./types/reporte.js";
@@ -188,6 +190,26 @@ function parseDetencion(body: Record<string, unknown>): DetencionInput {
   };
 }
 
+function parseCaja(body: Record<string, unknown>): CajaRetenidaRechazadaInput {
+  const tipo = body.tipo;
+  if (tipo !== "Retenida" && tipo !== "Rechazada") {
+    throw Object.assign(new Error("tipo solo puede ser Retenida o Rechazada"), { statusCode: 400 });
+  }
+
+  const cantidad = Number(body.cantidad);
+  if (!Number.isInteger(cantidad) || cantidad <= 0) {
+    throw Object.assign(new Error("cantidad debe ser un entero mayor a 0"), { statusCode: 400 });
+  }
+
+  return {
+    turno_id: parseId(String(body.turno_id), "turno_id"),
+    tipo: tipo as CajaTipo,
+    cantidad,
+    producto_id: requiredText(body.producto_id, "producto_id"),
+    producto_nombre: requiredText(body.producto_nombre, "producto_nombre")
+  };
+}
+
 function parseDateFilter(value: string | null, field: string) {
   if (!value) return undefined;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -314,12 +336,21 @@ async function route(method: Method, url: URL, body: Record<string, unknown>): P
     if (method === "GET") return { statusCode: 200, payload: await getDetencionesByReporteId(reporteId) };
     if (method === "POST") return { statusCode: 201, payload: await createDetencion(reporteId, parseDetencion(body)) };
   }
+  if (parts[0] === "reportes" && parts[2] === "cajas") {
+    const reporteId = parseId(parts[1], "reporte_id");
+    if (method === "GET") return { statusCode: 200, payload: await getCajasByReporteId(reporteId) };
+    if (method === "POST") return { statusCode: 201, payload: await createCaja(reporteId, parseCaja(body)) };
+  }
   if (parts[0] === "reportes" && method === "PATCH") {
     return { statusCode: 200, payload: await updateReporte(parseId(parts[1], "reporte_id"), parseReporte(body)) };
   }
   if (parts[0] === "detenciones") {
     if (method === "PATCH") return { statusCode: 200, payload: await updateDetencion(parseId(parts[1], "detencion_id"), parseDetencion(body)) };
     if (method === "DELETE") return { statusCode: 200, payload: { message: "Detencion eliminada correctamente", data: await deleteDetencion(parseId(parts[1], "detencion_id")) } };
+  }
+  if (parts[0] === "cajas") {
+    if (method === "PATCH") return { statusCode: 200, payload: await updateCaja(parseId(parts[1], "caja_id"), parseCaja(body)) };
+    if (method === "DELETE") return { statusCode: 200, payload: { message: "Registro eliminado correctamente", data: await deleteCaja(parseId(parts[1], "caja_id")) } };
   }
 
   return { statusCode: 404, payload: { status: "error", message: "Ruta no encontrada" } };

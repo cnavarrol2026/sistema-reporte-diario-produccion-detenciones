@@ -7,7 +7,8 @@ const backupTables = [
   "turnos",
   "turno_horarios",
   "reportes",
-  "detenciones"
+  "detenciones",
+  "cajas_retenidas_rechazadas"
 ] as const;
 
 function quoteIdentifier(value: string) {

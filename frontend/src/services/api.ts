@@ -198,6 +198,7 @@ export interface ReporteInforme {
   reporte: Reporte;
   resumen: ReporteResumen;
   detenciones: Detencion[];
+  cajas: CajaRetenidaRechazada[];
   total_por_indicador: ReporteResumenItem[];
   total_por_turno: ReporteResumenItem[];
   observacion_general: string | null;
@@ -270,6 +271,30 @@ export interface DetencionInput {
   hora_fin?: string | null;
   descripcion: string;
   plan_accion?: string | null;
+}
+
+export type CajaTipo = "Retenida" | "Rechazada";
+
+export interface CajaRetenidaRechazada {
+  id: number;
+  reporte_id: number;
+  turno_id: number;
+  turno_codigo: string;
+  turno_nombre: string;
+  tipo: CajaTipo;
+  cantidad: number;
+  producto_id: string;
+  producto_nombre: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CajaRetenidaRechazadaInput {
+  turno_id: number;
+  tipo: CajaTipo;
+  cantidad: number;
+  producto_id: string;
+  producto_nombre: string;
 }
 
 interface ApiMessage<T> {
@@ -371,6 +396,10 @@ export function fetchDetenciones(reporteId: number) {
   return requestJson<Detencion[]>(`/reportes/${reporteId}/detenciones`);
 }
 
+export function fetchCajas(reporteId: number) {
+  return requestJson<CajaRetenidaRechazada[]>(`/reportes/${reporteId}/cajas`);
+}
+
 export function createDetencion(reporteId: number, input: DetencionInput) {
   return requestJson<Detencion>(`/reportes/${reporteId}/detenciones`, {
     method: "POST",
@@ -387,6 +416,24 @@ export function updateDetencion(id: number, input: DetencionInput) {
 
 export function deleteDetencion(id: number) {
   return requestJson<ApiMessage<Detencion>>(`/detenciones/${id}`, { method: "DELETE" });
+}
+
+export function createCaja(reporteId: number, input: CajaRetenidaRechazadaInput) {
+  return requestJson<CajaRetenidaRechazada>(`/reportes/${reporteId}/cajas`, {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateCaja(id: number, input: CajaRetenidaRechazadaInput) {
+  return requestJson<CajaRetenidaRechazada>(`/cajas/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export function deleteCaja(id: number) {
+  return requestJson<ApiMessage<CajaRetenidaRechazada>>(`/cajas/${id}`, { method: "DELETE" });
 }
 
 export async function fetchInitialConfiguration(incluirInactivas = false) {

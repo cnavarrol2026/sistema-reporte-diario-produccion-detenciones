@@ -1,5 +1,6 @@
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { pool } from "../db/mysql.js";
+import { getCajasByReporteId } from "./cajaService.js";
 import { getDetencionesByReporteId } from "./detencionService.js";
 import type {
   Reporte,
@@ -445,15 +446,17 @@ export async function getInformeReporte(id: number) {
     throw Object.assign(new Error("Solo se pueden consultar informes finalizados"), { statusCode: 409 });
   }
 
-  const [resumen, detenciones] = await Promise.all([
+  const [resumen, detenciones, cajas] = await Promise.all([
     getReporteResumen(id),
-    getDetencionesByReporteId(id)
+    getDetencionesByReporteId(id),
+    getCajasByReporteId(id)
   ]);
 
   return {
     reporte,
     resumen,
     detenciones,
+    cajas,
     total_por_indicador: resumen.total_por_indicador,
     total_por_turno: resumen.total_por_turno,
     observacion_general: reporte.observacion_general

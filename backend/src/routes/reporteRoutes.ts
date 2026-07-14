@@ -6,6 +6,12 @@ import {
   updateDetencionController
 } from "../controllers/detencionController.js";
 import {
+  createCajaController,
+  deleteCajaController,
+  listCajasController,
+  updateCajaController
+} from "../controllers/cajaController.js";
+import {
   downloadReportePdfController,
   finalizarReporteController,
   getInformeReporteController,
@@ -30,5 +36,9 @@ reporteRoutes.post("/reportes/:id/finalizar", asyncHandler(finalizarReporteContr
 reporteRoutes.patch("/reportes/:id", asyncHandler(updateReporteController));
 reporteRoutes.get("/reportes/:id/detenciones", asyncHandler(listDetencionesController));
 reporteRoutes.post("/reportes/:id/detenciones", asyncHandler(createDetencionController));
+reporteRoutes.get("/reportes/:id/cajas", asyncHandler(listCajasController));
+reporteRoutes.post("/reportes/:id/cajas", asyncHandler(createCajaController));
 reporteRoutes.patch("/detenciones/:id", asyncHandler(updateDetencionController));
 reporteRoutes.delete("/detenciones/:id", asyncHandler(deleteDetencionController));
+reporteRoutes.patch("/cajas/:id", asyncHandler(updateCajaController));
+reporteRoutes.delete("/cajas/:id", asyncHandler(deleteCajaController));
