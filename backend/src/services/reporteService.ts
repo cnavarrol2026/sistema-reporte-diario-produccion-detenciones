@@ -28,6 +28,7 @@ type TurnoHorarioCalculoRow = RowDataPacket & {
   hora_fin: string;
   cruza_medianoche: number | boolean;
 };
+type IndicadorResumenRow = RowDataPacket & { id: number; codigo: string; nombre: string; color: string };
 
 function toDbTipo(tipo: TipoAtrasoAdelanto) {
   return tipo === "Adelanto" ? "adelanto" : "atraso";
@@ -144,6 +145,27 @@ function splitMinutesByTurno(
   }
 
   return result;
+}
+
+function addDetalleIndicador(detalles: Map<number, Map<number, number>>, grupoId: number, indicadorId: number, minutos: number) {
+  const detalle = detalles.get(grupoId) ?? new Map<number, number>();
+  detalle.set(indicadorId, (detalle.get(indicadorId) ?? 0) + minutos);
+  detalles.set(grupoId, detalle);
+}
+
+function buildDetalleIndicadores(indicadores: IndicadorResumenRow[], detalle?: Map<number, number>) {
+  if (!detalle) return [];
+
+  return indicadores
+    .map((indicador) => ({
+      id: indicador.id,
+      codigo: indicador.codigo,
+      nombre: indicador.nombre,
+      color: indicador.color,
+      minutos: detalle.get(indicador.id) ?? 0
+    }))
+    .filter((item) => item.minutos > 0)
+    .sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo));
 }
 
 function reporteSelectSql(whereClause: string) {
@@ -369,7 +391,7 @@ export async function getReporteResumen(id: number) {
     throw Object.assign(new Error("Reporte no encontrado"), { statusCode: 404 });
   }
 
-  const [indicadores] = await pool.query<(RowDataPacket & { id: number; codigo: string; nombre: string; color: string })[]>(
+  const [indicadores] = await pool.query<IndicadorResumenRow[]>(
     "SELECT id, codigo, nombre, color FROM indicadores WHERE activo = 1 ORDER BY orden, codigo"
   );
   const [turnos] = await pool.query<(RowDataPacket & { id: number; codigo: string; nombre: string })[]>(
@@ -389,6 +411,15 @@ export async function getReporteResumen(id: number) {
   const minutosPorIndicador = new Map(indicadores.map((indicador) => [indicador.id, 0]));
   const minutosPorTurno = new Map(turnos.map((turno) => [turno.id, 0]));
   const minutosPorZona = new Map(zonas.map((zona) => [zona.id, 0]));
+  const detalleIndicadoresPorTurno = new Map<number, Map<number, number>>();
+  const detalleIndicadoresPorZona = new Map<number, Map<number, number>>();
+
+  for (const turno of turnos) {
+    detalleIndicadoresPorTurno.set(turno.id, new Map());
+  }
+  for (const zona of zonas) {
+    detalleIndicadoresPorZona.set(zona.id, new Map());
+  }
 
   let totalMinutos = 0;
   let abiertas = 0;
@@ -401,12 +432,15 @@ export async function getReporteResumen(id: number) {
     totalMinutos += minutos;
     minutosPorIndicador.set(detencion.indicador_id, (minutosPorIndicador.get(detencion.indicador_id) ?? 0) + minutos);
     minutosPorZona.set(detencion.zona_id, (minutosPorZona.get(detencion.zona_id) ?? 0) + minutos);
+    addDetalleIndicador(detalleIndicadoresPorZona, detencion.zona_id, detencion.indicador_id, minutos);
     const minutosRepartidos = splitMinutesByTurno(reporte.fecha_reporte, detencion, horarios);
     if (minutosRepartidos.size === 0) {
       minutosPorTurno.set(detencion.turno_id, (minutosPorTurno.get(detencion.turno_id) ?? 0) + minutos);
+      addDetalleIndicador(detalleIndicadoresPorTurno, detencion.turno_id, detencion.indicador_id, minutos);
     } else {
       for (const [turnoId, turnoMinutos] of minutosRepartidos) {
         minutosPorTurno.set(turnoId, (minutosPorTurno.get(turnoId) ?? 0) + turnoMinutos);
+        addDetalleIndicador(detalleIndicadoresPorTurno, turnoId, detencion.indicador_id, turnoMinutos);
       }
     }
     if (detencion.estado_calculado === "abierta") abiertas += 1;
@@ -432,13 +466,15 @@ export async function getReporteResumen(id: number) {
       id: turno.id,
       codigo: turno.codigo,
       nombre: turno.nombre,
-      minutos: minutosPorTurno.get(turno.id) ?? 0
+      minutos: minutosPorTurno.get(turno.id) ?? 0,
+      detalle_indicadores: buildDetalleIndicadores(indicadores, detalleIndicadoresPorTurno.get(turno.id))
     })),
     total_por_zona: zonas.map((zona) => ({
       id: zona.id,
       codigo: "",
       nombre: zona.nombre,
-      minutos: minutosPorZona.get(zona.id) ?? 0
+      minutos: minutosPorZona.get(zona.id) ?? 0,
+      detalle_indicadores: buildDetalleIndicadores(indicadores, detalleIndicadoresPorZona.get(zona.id))
     })).sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre)),
     opinona_planificada: reporte.opinona_planificada,
     opinona_real: reporte.opinona_real,

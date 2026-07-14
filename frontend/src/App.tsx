@@ -167,6 +167,15 @@ interface DetencionFormState {
   plan_accion: string;
 }
 
+type ResumenItem = {
+  id: number;
+  codigo: string;
+  nombre: string;
+  color?: string;
+  minutos: number;
+  detalle_indicadores?: ResumenItem[];
+};
+
 const emptyDetencionForm: DetencionFormState = {
   indicador_id: "",
   turno_id: "",
@@ -1176,21 +1185,20 @@ function InformeDetalleView({
         </article>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-3">
         <ResumenBreakdownPanel
           title="Minutos por indicador"
-          items={[...informe.total_por_indicador].sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo))}
+          items={filterPositiveItems([...informe.total_por_indicador].sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo)))}
           renderName={(item) => `${item.codigo} - ${item.nombre}`}
         />
-        <ResumenBreakdownPanel
+        <ResumenGroupedPanel
           title="Minutos por turno"
           items={[...informe.total_por_turno].sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo))}
-          renderName={(item) => item.nombre}
+          showEmptyGroups
         />
-        <ResumenBreakdownPanel
+        <ResumenGroupedPanel
           title="Minutos por zona"
-          items={[...informe.total_por_zona].sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre))}
-          renderName={(item) => item.nombre}
+          items={filterPositiveItems([...informe.total_por_zona].sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre)))}
         />
       </div>
     </section>
@@ -1657,18 +1665,17 @@ function ReporteDiaView({
         <div className="grid gap-5 lg:grid-cols-3">
           <ResumenBreakdownPanel
             title="Minutos por indicador"
-            items={liveSummary.porIndicador}
+            items={filterPositiveItems(liveSummary.porIndicador)}
             renderName={(item) => `${item.codigo} - ${item.nombre}`}
           />
-          <ResumenBreakdownPanel
+          <ResumenGroupedPanel
             title="Minutos por turno"
             items={liveSummary.porTurno}
-            renderName={(item) => item.nombre}
+            showEmptyGroups
           />
-          <ResumenBreakdownPanel
+          <ResumenGroupedPanel
             title="Minutos por zona"
-            items={liveSummary.porZona}
-            renderName={(item) => item.nombre}
+            items={filterPositiveItems(liveSummary.porZona)}
           />
         </div>
       </section>
@@ -2992,15 +2999,17 @@ function ResumenBreakdownPanel({
   renderName,
   title
 }: {
-  items: Array<{ id: number; codigo: string; nombre: string; color?: string; minutos: number }>;
-  renderName: (item: { id: number; codigo: string; nombre: string; color?: string; minutos: number }) => string;
+  items: ResumenItem[];
+  renderName: (item: ResumenItem) => string;
   title: string;
 }) {
   return (
     <article className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
       <h3 className="text-base font-semibold text-industrial-900">{title}</h3>
       <div className="mt-4 space-y-3">
-        {items.map((item) => (
+        {items.length === 0 ? (
+          <p className="rounded-md bg-industrial-50 p-3 text-sm text-industrial-600">Sin minutos registrados.</p>
+        ) : items.map((item) => (
           <div className="flex items-center justify-between gap-4 rounded-md bg-industrial-50 p-3" key={item.id}>
             <div className="flex items-center gap-3">
               {item.color ? <span className="h-4 w-4 rounded-full border border-industrial-100" style={{ backgroundColor: item.color }} /> : null}
@@ -3012,6 +3021,55 @@ function ResumenBreakdownPanel({
       </div>
     </article>
   );
+}
+
+function ResumenGroupedPanel({
+  items,
+  showEmptyGroups = false,
+  title
+}: {
+  items: ResumenItem[];
+  showEmptyGroups?: boolean;
+  title: string;
+}) {
+  const visibleItems = showEmptyGroups ? items : filterPositiveItems(items);
+
+  return (
+    <article className="rounded-lg border border-industrial-100 bg-white p-5 shadow-sm">
+      <h3 className="text-base font-semibold text-industrial-900">{title}</h3>
+      <div className="mt-4 space-y-3">
+        {visibleItems.length === 0 ? (
+          <p className="rounded-md bg-industrial-50 p-3 text-sm text-industrial-600">Sin minutos registrados.</p>
+        ) : visibleItems.map((item) => (
+          <div className="rounded-md bg-industrial-50 p-3" key={item.id}>
+            <div className="flex items-center justify-between gap-4">
+              <p className="text-sm font-semibold text-industrial-900">{item.nombre}</p>
+              <p className="text-sm font-bold text-industrial-900">{item.minutos} min</p>
+            </div>
+            {item.detalle_indicadores && item.detalle_indicadores.length > 0 ? (
+              <div className="mt-3 space-y-2 border-t border-industrial-100 pt-3">
+                {item.detalle_indicadores.map((detalle) => (
+                  <div className="flex items-center justify-between gap-3 text-xs" key={detalle.id}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {detalle.color ? <span className="h-3 w-3 shrink-0 rounded-full border border-industrial-100" style={{ backgroundColor: detalle.color }} /> : null}
+                      <span className="truncate font-semibold text-industrial-700">{detalle.codigo} - {detalle.nombre}</span>
+                    </div>
+                    <span className="shrink-0 font-bold text-industrial-900">{detalle.minutos} min</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 border-t border-industrial-100 pt-3 text-xs text-industrial-500">Sin detenciones registradas.</p>
+            )}
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function filterPositiveItems<T extends { minutos: number }>(items: T[]) {
+  return items.filter((item) => item.minutos > 0);
 }
 
 function NumericTextInput({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
@@ -3230,6 +3288,8 @@ function buildLiveSummary(
   const porIndicador = new Map(indicadorBase.map((item) => [item.id, { ...item, minutos: 0 }]));
   const porTurno = new Map(turnoBase.map((item) => [item.id, { ...item, minutos: 0 }]));
   const porZona = new Map(zonaBase.map((item) => [item.id, { ...item, minutos: 0 }]));
+  const detallePorTurno = new Map<number, Map<number, ResumenItem>>();
+  const detallePorZona = new Map<number, Map<number, ResumenItem>>();
   let totalMinutos = 0;
   let abiertas = 0;
 
@@ -3256,6 +3316,7 @@ function buildLiveSummary(
     };
     zona.minutos += minutos;
     porZona.set(detencion.zona_id, zona);
+    addLiveDetalleIndicador(detallePorZona, detencion.zona_id, detencion, minutos);
 
     const minutosPorTurno = splitDetencionMinutesByTurno(detencion, reporteFecha, liveNow, configuration?.horarios ?? []);
     if (minutosPorTurno.size === 0) {
@@ -3267,6 +3328,7 @@ function buildLiveSummary(
       };
       turno.minutos += minutos;
       porTurno.set(detencion.turno_id, turno);
+      addLiveDetalleIndicador(detallePorTurno, detencion.turno_id, detencion, minutos);
     } else {
       for (const [turnoId, turnoMinutos] of minutosPorTurno) {
         const turno = porTurno.get(turnoId);
@@ -3274,6 +3336,7 @@ function buildLiveSummary(
           turno.minutos += turnoMinutos;
           porTurno.set(turnoId, turno);
         }
+        addLiveDetalleIndicador(detallePorTurno, turnoId, detencion, turnoMinutos);
       }
     }
   }
@@ -3283,9 +3346,35 @@ function buildLiveSummary(
     totalDetenciones: detenciones.length,
     detencionesAbiertas: abiertas,
     porIndicador: Array.from(porIndicador.values()).sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo)),
-    porTurno: Array.from(porTurno.values()),
-    porZona: Array.from(porZona.values()).sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre))
+    porTurno: Array.from(porTurno.values()).map((turno) => ({
+      ...turno,
+      detalle_indicadores: detalleMapToItems(detallePorTurno.get(turno.id))
+    })),
+    porZona: Array.from(porZona.values()).map((zona) => ({
+      ...zona,
+      detalle_indicadores: detalleMapToItems(detallePorZona.get(zona.id))
+    })).sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre))
   };
+}
+
+function addLiveDetalleIndicador(detalles: Map<number, Map<number, ResumenItem>>, grupoId: number, detencion: Detencion, minutos: number) {
+  if (minutos <= 0) return;
+  const detalle = detalles.get(grupoId) ?? new Map<number, ResumenItem>();
+  const indicador = detalle.get(detencion.indicador_id) ?? {
+    id: detencion.indicador_id,
+    codigo: detencion.indicador_codigo,
+    nombre: detencion.indicador_nombre,
+    color: detencion.indicador_color,
+    minutos: 0
+  };
+  indicador.minutos += minutos;
+  detalle.set(detencion.indicador_id, indicador);
+  detalles.set(grupoId, detalle);
+}
+
+function detalleMapToItems(detalle?: Map<number, ResumenItem>) {
+  if (!detalle) return [];
+  return Array.from(detalle.values()).sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo));
 }
 
 function formatDate(value: string) {

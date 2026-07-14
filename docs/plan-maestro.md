@@ -172,7 +172,8 @@ Las detenciones ahora deben indicar la zona operacional donde ocurrieron:
 - Las zonas se administran desde Configuracion y se desactivan sin borrado fisico.
 - El modal de detenciones exige seleccionar una zona activa.
 - Los informes online muestran zona por detencion y resumen de minutos por zona.
-- Pendiente para el cierre de PDF: incluir zona en el detalle de detenciones y resumen de minutos por zona junto con cajas retenidas/rechazadas.
+- Los resumenes online muestran minutos por indicador, minutos por turno con desglose de indicadores y minutos por zona con desglose de indicadores.
+- Pendiente para el cierre de PDF: incluir zona en el detalle de detenciones, resumen de minutos por zona y desglose de indicadores por turno/zona junto con cajas retenidas/rechazadas.
 
 ## Siguiente paso recomendado
 

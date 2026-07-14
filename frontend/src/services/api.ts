@@ -163,6 +163,7 @@ export interface ReporteResumenItem {
   nombre: string;
   color?: string;
   minutos: number;
+  detalle_indicadores?: ReporteResumenItem[];
 }
 
 export interface ReporteResumen {
