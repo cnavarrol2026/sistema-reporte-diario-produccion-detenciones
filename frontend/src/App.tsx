@@ -1781,20 +1781,21 @@ function DetencionModal({
             }))}
             value={form.indicador_id}
           />
-          <TimeInput label="Hora inicio" onChange={(hora_inicio) => updateForm({ hora_inicio })} value={form.hora_inicio} />
           <SelectInput
             label="Turno"
             onChange={(turno_id) => updateForm({ turno_id })}
             options={turnos.map((turno) => ({ label: turno.nombre, value: String(turno.id) }))}
             value={form.turno_id}
           />
+          <TimeInput label="Hora inicio" onChange={(hora_inicio) => updateForm({ hora_inicio })} value={form.hora_inicio} />
+          <TimeInput label="Hora fin" onChange={(hora_fin) => updateForm({ hora_fin })} value={form.hora_fin} />
           <SelectInput
             label="Zona"
             onChange={(zona_id) => updateForm({ zona_id })}
             options={zonas.map((zona) => ({ label: zona.nombre, value: String(zona.id) }))}
             value={form.zona_id}
+            className="md:col-span-2"
           />
-          <TimeInput label="Hora fin" onChange={(hora_fin) => updateForm({ hora_fin })} value={form.hora_fin} />
           <label className="block text-sm font-medium text-industrial-700 md:col-span-2">
             Descripcion
             <textarea
@@ -2805,18 +2806,20 @@ function DateInput({ label, onChange, value }: { label: string; onChange: (value
 }
 
 function SelectInput({
+  className = "",
   label,
   onChange,
   options,
   value
 }: {
+  className?: string;
   label: string;
   onChange: (value: string) => void;
   options: Array<{ label: string; value: string }>;
   value: string;
 }) {
   return (
-    <label className="block text-sm font-medium text-industrial-700">
+    <label className={`block text-sm font-medium text-industrial-700 ${className}`}>
       {label}
       <select
         className="mt-1 min-h-11 w-full rounded-md border border-industrial-100 px-3 text-sm outline-none focus:border-industrial-500 focus:ring-2 focus:ring-industrial-100"
