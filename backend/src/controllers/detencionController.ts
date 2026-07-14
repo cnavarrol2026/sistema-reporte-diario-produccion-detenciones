@@ -31,6 +31,7 @@ function parseDetencionInput(body: Record<string, unknown>): DetencionInput {
   return {
     indicador_id: parseId(body.indicador_id, "indicador_id"),
     turno_id: parseId(body.turno_id, "turno_id"),
+    zona_id: parseId(body.zona_id, "zona_id"),
     hora_inicio: requiredText(body.hora_inicio, "hora_inicio"),
     hora_fin: optionalTime(body.hora_fin),
     descripcion: requiredText(body.descripcion, "descripcion"),

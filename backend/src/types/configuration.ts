@@ -39,6 +39,17 @@ export interface TurnoInput {
   activo?: boolean;
 }
 
+export interface Zona {
+  id: number;
+  nombre: string;
+  activo: boolean;
+}
+
+export interface ZonaInput {
+  nombre: string;
+  activo?: boolean;
+}
+
 export interface TurnoHorario {
   id: number;
   turno_id: number;

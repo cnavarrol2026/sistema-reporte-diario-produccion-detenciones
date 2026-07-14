@@ -85,6 +85,17 @@ export interface TurnoInput {
   activo: boolean;
 }
 
+export interface Zona {
+  id: number;
+  nombre: string;
+  activo: boolean;
+}
+
+export interface ZonaInput {
+  nombre: string;
+  activo: boolean;
+}
+
 export interface TurnoHorario {
   id: number;
   turno_id: number;
@@ -162,6 +173,7 @@ export interface ReporteResumen {
   cumplimiento: number | null;
   total_por_indicador: ReporteResumenItem[];
   total_por_turno: ReporteResumenItem[];
+  total_por_zona: ReporteResumenItem[];
   opinona_planificada: number | null;
   opinona_real: number | null;
   producciones_programadas: number | null;
@@ -201,6 +213,7 @@ export interface ReporteInforme {
   cajas: CajaRetenidaRechazada[];
   total_por_indicador: ReporteResumenItem[];
   total_por_turno: ReporteResumenItem[];
+  total_por_zona: ReporteResumenItem[];
   observacion_general: string | null;
 }
 
@@ -253,6 +266,8 @@ export interface Detencion {
   turno_id: number;
   turno_codigo: string;
   turno_nombre: string;
+  zona_id: number;
+  zona_nombre: string;
   hora_inicio: string;
   hora_fin: string | null;
   descripcion: string;
@@ -267,6 +282,7 @@ export interface Detencion {
 export interface DetencionInput {
   indicador_id: number;
   turno_id: number;
+  zona_id: number;
   hora_inicio: string;
   hora_fin?: string | null;
   descripcion: string;
@@ -437,14 +453,15 @@ export function deleteCaja(id: number) {
 }
 
 export async function fetchInitialConfiguration(incluirInactivas = false) {
-  const [lineas, indicadores, turnos, horarios] = await Promise.all([
+  const [lineas, indicadores, turnos, zonas, horarios] = await Promise.all([
     fetchLineas(incluirInactivas),
     fetchIndicadores(incluirInactivas),
     fetchTurnos(incluirInactivas),
+    fetchZonas(incluirInactivas),
     fetchTurnoHorarios(incluirInactivas)
   ]);
 
-  return { lineas, indicadores, turnos, horarios };
+  return { lineas, indicadores, turnos, zonas, horarios };
 }
 
 export function fetchLineas(incluirInactivas = false) {
@@ -511,6 +528,28 @@ export function updateTurno(id: number, input: TurnoInput) {
 
 export function deactivateTurno(id: number) {
   return requestJson<ApiMessage<Turno>>(`/turnos/${id}`, { method: "DELETE" });
+}
+
+export function fetchZonas(incluirInactivas = false) {
+  return requestJson<Zona[]>(withInactive("/zonas", incluirInactivas));
+}
+
+export function createZona(input: ZonaInput) {
+  return requestJson<Zona>("/zonas", {
+    method: "POST",
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateZona(id: number, input: ZonaInput) {
+  return requestJson<Zona>(`/zonas/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input)
+  });
+}
+
+export function deactivateZona(id: number) {
+  return requestJson<ApiMessage<Zona>>(`/zonas/${id}`, { method: "DELETE" });
 }
 
 export function fetchTurnoHorarios(incluirInactivas = false) {

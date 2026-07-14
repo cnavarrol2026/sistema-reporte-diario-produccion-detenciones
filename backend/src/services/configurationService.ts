@@ -8,7 +8,9 @@ import type {
   Turno,
   TurnoHorario,
   TurnoHorarioInput,
-  TurnoInput
+  TurnoInput,
+  Zona,
+  ZonaInput
 } from "../types/configuration.js";
 
 function activeFilter(column: "activa" | "activo", incluirInactivas: boolean) {
@@ -131,6 +133,43 @@ export async function updateTurno(id: number, input: TurnoInput) {
 export async function deactivateTurno(id: number) {
   await pool.execute("UPDATE turnos SET activo = 0 WHERE id = ?", [id]);
   return getTurnoById(id);
+}
+
+export async function getZonas(incluirInactivas = false) {
+  const [rows] = await pool.query<(Zona & RowDataPacket)[]>(
+    `SELECT id, nombre, activo FROM zonas ${activeFilter("activo", incluirInactivas)} ORDER BY activo DESC, nombre`
+  );
+  return rows;
+}
+
+export async function getZonaById(id: number) {
+  const [rows] = await pool.query<(Zona & RowDataPacket)[]>(
+    "SELECT id, nombre, activo FROM zonas WHERE id = ? LIMIT 1",
+    [id]
+  );
+  return rows[0] ?? null;
+}
+
+export async function createZona(input: ZonaInput) {
+  const [result] = await pool.execute<ResultSetHeader>(
+    "INSERT INTO zonas (nombre, activo) VALUES (?, ?)",
+    [input.nombre.trim(), toDbBoolean(input.activo)]
+  );
+  return getZonaById(result.insertId);
+}
+
+export async function updateZona(id: number, input: ZonaInput) {
+  await pool.execute("UPDATE zonas SET nombre = ?, activo = ? WHERE id = ?", [
+    input.nombre.trim(),
+    toDbBoolean(input.activo),
+    id
+  ]);
+  return getZonaById(id);
+}
+
+export async function deactivateZona(id: number) {
+  await pool.execute("UPDATE zonas SET activo = 0 WHERE id = ?", [id]);
+  return getZonaById(id);
 }
 
 export async function getTurnoHorarios(incluirInactivas = false) {

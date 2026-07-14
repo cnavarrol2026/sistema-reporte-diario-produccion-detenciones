@@ -164,6 +164,16 @@ El Reporte del Dia permite registrar opcionalmente cajas retenidas o rechazadas:
 - Los informes online muestran las cajas en modo solo lectura.
 - Pendiente para el cierre de PDF: incluir esta seccion en el PDF ejecutivo cuando se agrupen los cambios finales del PDF.
 
+## Avance agregado: zonas de detenciones
+
+Las detenciones ahora deben indicar la zona operacional donde ocurrieron:
+
+- Zonas iniciales: Zona 1, Zona 2, Zona 3, Zona 4, Zona 5, Transporte General y Sala de Pulmones.
+- Las zonas se administran desde Configuracion y se desactivan sin borrado fisico.
+- El modal de detenciones exige seleccionar una zona activa.
+- Los informes online muestran zona por detencion y resumen de minutos por zona.
+- Pendiente para el cierre de PDF: incluir zona en el detalle de detenciones y resumen de minutos por zona junto con cajas retenidas/rechazadas.
+
 ## Siguiente paso recomendado
 
 ## Pulido final y preparacion para pruebas

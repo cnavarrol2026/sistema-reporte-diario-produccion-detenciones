@@ -8,6 +8,8 @@ export interface Detencion {
   turno_id: number;
   turno_codigo: string;
   turno_nombre: string;
+  zona_id: number;
+  zona_nombre: string;
   hora_inicio: string;
   hora_fin: string | null;
   descripcion: string;
@@ -22,6 +24,7 @@ export interface Detencion {
 export interface DetencionInput {
   indicador_id: number;
   turno_id: number;
+  zona_id: number;
   hora_inicio: string;
   hora_fin?: string | null;
   descripcion: string;

@@ -4,18 +4,22 @@ import {
   createLineaController,
   createTurnoController,
   createTurnoHorarioController,
+  createZonaController,
   deleteIndicadorController,
   deleteLineaController,
   deleteTurnoController,
   deleteTurnoHorarioController,
+  deleteZonaController,
   listIndicadores,
   listLineas,
   listTurnoHorarios,
   listTurnos,
+  listZonas,
   updateIndicadorController,
   updateLineaController,
   updateTurnoController,
-  updateTurnoHorarioController
+  updateTurnoHorarioController,
+  updateZonaController
 } from "../controllers/configurationController.js";
 import { asyncHandler } from "./asyncHandler.js";
 
@@ -35,6 +39,11 @@ configurationRoutes.get("/turnos", asyncHandler(listTurnos));
 configurationRoutes.post("/turnos", asyncHandler(createTurnoController));
 configurationRoutes.patch("/turnos/:id", asyncHandler(updateTurnoController));
 configurationRoutes.delete("/turnos/:id", asyncHandler(deleteTurnoController));
+
+configurationRoutes.get("/zonas", asyncHandler(listZonas));
+configurationRoutes.post("/zonas", asyncHandler(createZonaController));
+configurationRoutes.patch("/zonas/:id", asyncHandler(updateZonaController));
+configurationRoutes.delete("/zonas/:id", asyncHandler(deleteZonaController));
 
 configurationRoutes.get("/turno-horarios", asyncHandler(listTurnoHorarios));
 configurationRoutes.post("/turno-horarios", asyncHandler(createTurnoHorarioController));

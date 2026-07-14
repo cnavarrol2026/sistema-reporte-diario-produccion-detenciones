@@ -101,22 +101,23 @@ SOURCE C:/xampp/htdocs/Sistema Web Reporte Diario/reporte-detenciones/database/m
 
 ## Modulos disponibles
 
-- Configuracion: lineas, indicadores, turnos y horarios.
+- Configuracion: lineas, indicadores, turnos, horarios y zonas.
 - Reporte del Dia: reporte abierto, autosave, producciones, OPINONA y observacion.
 - Imagen del reporte: JPG/PNG obligatoria para finalizar, visible en informe online y excluida del PDF.
-- Detenciones: crear, editar, eliminar, calculo de minutos y cruce de medianoche.
+- Detenciones: crear, editar, eliminar, zona operacional, calculo de minutos y cruce de medianoche.
 - Cajas retenidas/rechazadas: registro opcional por cantidad, producto y turno. Visible en Reporte del Dia e Informes. Pendiente de incorporar al PDF en el bloque final de cambios de PDF.
+- Minutos por zona: visible en informes online. Pendiente de incorporar al PDF junto con cajas retenidas/rechazadas.
 - Finalizacion: valida campos obligatorios, bloquea detenciones abiertas y congela minutos finales.
 - Informes: consulta online de reportes finalizados y descarga de PDF.
 - Dashboard: filtros por fecha, linea y turno, graficos y ranking.
 
 ## Flujo operativo
 
-1. Configurar lineas, indicadores, turnos y horarios.
+1. Configurar lineas, indicadores, turnos, horarios y zonas.
 2. Abrir Reporte del Dia.
 3. Completar datos generales.
 4. Cargar imagen JPG/PNG del reporte.
-5. Agregar detenciones cerradas o abiertas.
+5. Agregar detenciones cerradas o abiertas indicando zona.
 6. Si corresponde, marcar cajas retenidas/rechazadas y registrar sus lineas.
 7. Cerrar todas las detenciones antes de finalizar.
 8. Presionar `Finalizar reporte`.

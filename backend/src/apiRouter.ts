@@ -8,18 +8,22 @@ import {
   createLinea,
   createTurno,
   createTurnoHorario,
+  createZona,
   deactivateIndicador,
   deactivateLinea,
   deactivateTurno,
   deactivateTurnoHorario,
+  deactivateZona,
   getIndicadores,
   getLineas,
   getTurnoHorarios,
   getTurnos,
+  getZonas,
   updateIndicador,
   updateLinea,
   updateTurno,
-  updateTurnoHorario
+  updateTurnoHorario,
+  updateZona
 } from "./services/configurationService.js";
 import { createDetencion, deleteDetencion, getDetencionesByReporteId, updateDetencion } from "./services/detencionService.js";
 import { generateReportePdfBuffer } from "./services/pdfService.js";
@@ -35,7 +39,7 @@ import {
 import type { DashboardFilters } from "./types/dashboard.js";
 import type { DetencionInput } from "./types/detencion.js";
 import type { CajaRetenidaRechazadaInput, CajaTipo } from "./types/caja.js";
-import type { IndicadorInput, LineaInput, TurnoHorarioInput, TurnoInput } from "./types/configuration.js";
+import type { IndicadorInput, LineaInput, TurnoHorarioInput, TurnoInput, ZonaInput } from "./types/configuration.js";
 import type { ReporteFinalizadoFilters, ReporteUpdateInput, TipoAtrasoAdelanto } from "./types/reporte.js";
 
 export type Method = "GET" | "POST" | "PATCH" | "DELETE";
@@ -96,6 +100,13 @@ function parseTurno(body: Record<string, unknown>): TurnoInput {
   };
 }
 
+function parseZona(body: Record<string, unknown>): ZonaInput {
+  return {
+    nombre: requiredText(body.nombre, "nombre"),
+    activo: optionalBool(body.activo)
+  };
+}
+
 function parseTurnoHorario(body: Record<string, unknown>): TurnoHorarioInput {
   return {
     turno_id: parseId(String(body.turno_id), "turno_id"),
@@ -141,6 +152,7 @@ function parseDetencion(body: Record<string, unknown>): DetencionInput {
   return {
     indicador_id: parseId(String(body.indicador_id), "indicador_id"),
     turno_id: parseId(String(body.turno_id), "turno_id"),
+    zona_id: parseId(String(body.zona_id), "zona_id"),
     hora_inicio: requiredText(body.hora_inicio, "hora_inicio"),
     hora_fin: typeof body.hora_fin === "string" && body.hora_fin.trim() ? body.hora_fin.trim() : null,
     descripcion: requiredText(body.descripcion, "descripcion"),
@@ -248,6 +260,13 @@ export async function routeApi(method: Method, url: URL, body: Record<string, un
     if (method === "POST") return { statusCode: 201, payload: await createTurno(parseTurno(body)) };
     if (method === "PATCH") return { statusCode: 200, payload: await updateTurno(parseId(parts[1]), parseTurno(body)) };
     if (method === "DELETE") return { statusCode: 200, payload: { message: "Registro desactivado correctamente", data: await deactivateTurno(parseId(parts[1])) } };
+  }
+
+  if (parts[0] === "zonas") {
+    if (method === "GET") return { statusCode: 200, payload: await getZonas(includeInactive) };
+    if (method === "POST") return { statusCode: 201, payload: await createZona(parseZona(body)) };
+    if (method === "PATCH") return { statusCode: 200, payload: await updateZona(parseId(parts[1]), parseZona(body)) };
+    if (method === "DELETE") return { statusCode: 200, payload: { message: "Registro desactivado correctamente", data: await deactivateZona(parseId(parts[1])) } };
   }
 
   if (parts[0] === "turno-horarios") {

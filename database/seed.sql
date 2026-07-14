@@ -36,6 +36,19 @@ ON DUPLICATE KEY UPDATE
   activo = VALUES(activo),
   updated_at = CURRENT_TIMESTAMP;
 
+INSERT INTO zonas (nombre, activo)
+VALUES
+  ('Zona 1', 1),
+  ('Zona 2', 1),
+  ('Zona 3', 1),
+  ('Zona 4', 1),
+  ('Zona 5', 1),
+  ('Transporte General', 1),
+  ('Sala de Pulmones', 1)
+ON DUPLICATE KEY UPDATE
+  activo = VALUES(activo),
+  updated_at = CURRENT_TIMESTAMP;
+
 INSERT INTO turno_horarios (turno_id, dia_semana, hora_inicio, hora_fin, cruza_medianoche, activo)
 SELECT t.id, d.dia_semana, '08:10:00', '15:30:00', 0, 1
 FROM turnos t

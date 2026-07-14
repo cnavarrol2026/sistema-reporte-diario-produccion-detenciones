@@ -5,6 +5,7 @@ const backupTables = [
   "lineas",
   "indicadores",
   "turnos",
+  "zonas",
   "turno_horarios",
   "reportes",
   "detenciones",

@@ -15,6 +15,7 @@ type DetencionFinalizacionRow = RowDataPacket & {
   id: number;
   indicador_id: number | null;
   turno_id: number | null;
+  zona_id: number | null;
   hora_inicio: string | null;
   hora_fin: string | null;
   descripcion: string | null;
@@ -374,6 +375,9 @@ export async function getReporteResumen(id: number) {
   const [turnos] = await pool.query<(RowDataPacket & { id: number; codigo: string; nombre: string })[]>(
     "SELECT id, codigo, nombre FROM turnos WHERE activo = 1 ORDER BY codigo"
   );
+  const [zonas] = await pool.query<(RowDataPacket & { id: number; nombre: string })[]>(
+    "SELECT id, nombre FROM zonas WHERE activo = 1 ORDER BY nombre"
+  );
   const [horarios] = await pool.query<TurnoHorarioCalculoRow[]>(
     `SELECT turno_id, dia_semana, TIME_FORMAT(hora_inicio, '%H:%i') AS hora_inicio,
       TIME_FORMAT(hora_fin, '%H:%i') AS hora_fin, cruza_medianoche
@@ -384,6 +388,7 @@ export async function getReporteResumen(id: number) {
 
   const minutosPorIndicador = new Map(indicadores.map((indicador) => [indicador.id, 0]));
   const minutosPorTurno = new Map(turnos.map((turno) => [turno.id, 0]));
+  const minutosPorZona = new Map(zonas.map((zona) => [zona.id, 0]));
 
   let totalMinutos = 0;
   let abiertas = 0;
@@ -395,6 +400,7 @@ export async function getReporteResumen(id: number) {
         : Number(detencion.minutos_calculados ?? 0);
     totalMinutos += minutos;
     minutosPorIndicador.set(detencion.indicador_id, (minutosPorIndicador.get(detencion.indicador_id) ?? 0) + minutos);
+    minutosPorZona.set(detencion.zona_id, (minutosPorZona.get(detencion.zona_id) ?? 0) + minutos);
     const minutosRepartidos = splitMinutesByTurno(reporte.fecha_reporte, detencion, horarios);
     if (minutosRepartidos.size === 0) {
       minutosPorTurno.set(detencion.turno_id, (minutosPorTurno.get(detencion.turno_id) ?? 0) + minutos);
@@ -428,6 +434,12 @@ export async function getReporteResumen(id: number) {
       nombre: turno.nombre,
       minutos: minutosPorTurno.get(turno.id) ?? 0
     })),
+    total_por_zona: zonas.map((zona) => ({
+      id: zona.id,
+      codigo: "",
+      nombre: zona.nombre,
+      minutos: minutosPorZona.get(zona.id) ?? 0
+    })).sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre)),
     opinona_planificada: reporte.opinona_planificada,
     opinona_real: reporte.opinona_real,
     producciones_programadas: reporte.producciones_programadas,
@@ -459,6 +471,7 @@ export async function getInformeReporte(id: number) {
     cajas,
     total_por_indicador: resumen.total_por_indicador,
     total_por_turno: resumen.total_por_turno,
+    total_por_zona: resumen.total_por_zona,
     observacion_general: reporte.observacion_general
   };
 }
@@ -486,6 +499,7 @@ function validateReporteForFinalization(reporte: Reporte, detenciones: Detencion
     const label = `Detencion ${index + 1}`;
     if (isBlank(detencion.indicador_id)) missing.push(`${label}: indicador`);
     if (isBlank(detencion.turno_id)) missing.push(`${label}: turno`);
+    if (isBlank(detencion.zona_id)) missing.push(`${label}: zona`);
     if (isBlank(detencion.hora_inicio)) missing.push(`${label}: hora inicio`);
     if (isBlank(detencion.descripcion)) missing.push(`${label}: descripcion`);
     if (isBlank(detencion.hora_fin)) abiertas += 1;
@@ -523,7 +537,7 @@ export async function finalizarReporte(id: number) {
     }
 
     const [detenciones] = await connection.query<DetencionFinalizacionRow[]>(
-      `SELECT id, indicador_id, turno_id, hora_inicio, hora_fin, descripcion
+      `SELECT id, indicador_id, turno_id, zona_id, hora_inicio, hora_fin, descripcion
       FROM detenciones
       WHERE reporte_id = ?
       ORDER BY hora_inicio ASC, id ASC`,

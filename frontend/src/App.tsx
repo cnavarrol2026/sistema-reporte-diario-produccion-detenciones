@@ -32,10 +32,12 @@ import {
   createLinea,
   createTurno,
   createTurnoHorario,
+  createZona,
   deactivateIndicador,
   deactivateLinea,
   deactivateTurno,
   deactivateTurnoHorario,
+  deactivateZona,
   deleteDetencion,
   deleteCaja,
   downloadDatabaseBackup,
@@ -57,6 +59,7 @@ import {
   updateReporte,
   updateTurno,
   updateTurnoHorario,
+  updateZona,
   type DashboardFilters,
   type DashboardResumen,
   type CajaRetenidaRechazada,
@@ -79,13 +82,16 @@ import {
   type Turno,
   type TurnoHorario,
   type TurnoHorarioInput,
-  type TurnoInput
+  type TurnoInput,
+  type Zona,
+  type ZonaInput
 } from "./services/api";
 
 interface ConfigurationState {
   lineas: Linea[];
   indicadores: Indicador[];
   turnos: Turno[];
+  zonas: Zona[];
   horarios: TurnoHorario[];
 }
 
@@ -111,6 +117,7 @@ const dayNames = new Map([
 const emptyLinea: LineaInput = { nombre: "", activa: true };
 const emptyIndicador: IndicadorInput = { codigo: "", nombre: "", color: "#d9ecfb", orden: 1, activo: true };
 const emptyTurno: TurnoInput = { codigo: "", nombre: "", activo: true };
+const emptyZona: ZonaInput = { nombre: "", activo: true };
 const emptyHorario: TurnoHorarioInput = {
   turno_id: 0,
   dia_semana: 1,
@@ -153,6 +160,7 @@ const emptyReporteForm: ReporteFormState = {
 interface DetencionFormState {
   indicador_id: string;
   turno_id: string;
+  zona_id: string;
   hora_inicio: string;
   hora_fin: string;
   descripcion: string;
@@ -162,6 +170,7 @@ interface DetencionFormState {
 const emptyDetencionForm: DetencionFormState = {
   indicador_id: "",
   turno_id: "",
+  zona_id: "",
   hora_inicio: "",
   hora_fin: "",
   descripcion: "",
@@ -574,6 +583,10 @@ export function App() {
     return configuration?.turnos.filter((turno) => Boolean(turno.activo)) ?? [];
   }, [configuration]);
 
+  const zonasActivas = useMemo(() => {
+    return configuration?.zonas.filter((zona) => Boolean(zona.activo)) ?? [];
+  }, [configuration]);
+
   return (
     <main className="min-h-dvh bg-industrial-50 text-industrial-900">
       <header className="border-b border-industrial-100 bg-white">
@@ -657,12 +670,14 @@ export function App() {
           onCreateIndicador={(input) => runMutation(() => createIndicador(input), "Guardado correctamente")}
           onCreateLinea={(input) => runMutation(() => createLinea(input), "Guardado correctamente")}
           onCreateTurno={(input) => runMutation(() => createTurno(input), "Guardado correctamente")}
+          onCreateZona={(input) => runMutation(() => createZona(input), "Guardado correctamente")}
           onDeactivateHorario={(id) =>
             runMutation(() => deactivateTurnoHorario(id), "Registro desactivado correctamente")
           }
           onDeactivateIndicador={(id) => runMutation(() => deactivateIndicador(id), "Registro desactivado correctamente")}
           onDeactivateLinea={(id) => runMutation(() => deactivateLinea(id), "Registro desactivado correctamente")}
           onDeactivateTurno={(id) => runMutation(() => deactivateTurno(id), "Registro desactivado correctamente")}
+          onDeactivateZona={(id) => runMutation(() => deactivateZona(id), "Registro desactivado correctamente")}
           onDownloadBackup={downloadBackup}
           onReload={() => loadDashboardData(showInactive)}
           onShowInactiveChange={(value) => {
@@ -673,8 +688,10 @@ export function App() {
           onUpdateIndicador={(id, input) => runMutation(() => updateIndicador(id, input), "Guardado correctamente")}
           onUpdateLinea={(id, input) => runMutation(() => updateLinea(id, input), "Guardado correctamente")}
           onUpdateTurno={(id, input) => runMutation(() => updateTurno(id, input), "Guardado correctamente")}
+          onUpdateZona={(id, input) => runMutation(() => updateZona(id, input), "Guardado correctamente")}
           showInactive={showInactive}
           turnosActivos={turnosActivos}
+          zonasActivas={zonasActivas}
         />
       )}
     </main>
@@ -1170,6 +1187,11 @@ function InformeDetalleView({
           items={[...informe.total_por_turno].sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo))}
           renderName={(item) => item.nombre}
         />
+        <ResumenBreakdownPanel
+          title="Minutos por zona"
+          items={[...informe.total_por_zona].sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre))}
+          renderName={(item) => item.nombre}
+        />
       </div>
     </section>
   );
@@ -1182,7 +1204,7 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
         <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-industrial-50 text-xs uppercase text-industrial-500">
             <tr>
-              {["Indicador", "Turno", "Hora inicio", "Hora fin", "Minutos", "Descripcion", "Plan de accion"].map((column) => (
+              {["Indicador", "Turno", "Zona", "Hora inicio", "Hora fin", "Minutos", "Descripcion", "Plan de accion"].map((column) => (
                 <th className="px-4 py-3 font-semibold" key={column}>{column}</th>
               ))}
             </tr>
@@ -1192,6 +1214,7 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
               <tr key={detencion.id}>
                 <td className="px-4 py-3"><IndicatorPill detencion={detencion} /></td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.turno_nombre}</td>
+                <td className="px-4 py-3 text-industrial-700">{detencion.zona_nombre}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_inicio}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_fin ?? "-"}</td>
                 <td className="px-4 py-3 font-semibold text-industrial-900">{detencion.minutos_finales ?? detencion.minutos_calculados}</td>
@@ -1212,6 +1235,7 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <SmallFact label="Turno" value={detencion.turno_nombre} />
+              <SmallFact label="Zona" value={detencion.zona_nombre} />
               <SmallFact label="Minutos" value={String(detencion.minutos_finales ?? detencion.minutos_calculados)} />
               <SmallFact label="Inicio" value={detencion.hora_inicio} />
               <SmallFact label="Fin" value={detencion.hora_fin ?? "-"} />
@@ -1628,9 +1652,9 @@ function ReporteDiaView({
       <section className="mt-6">
         <div className="mb-4">
           <h3 className="text-lg font-semibold text-industrial-900">Resumen de minutos</h3>
-          <p className="mt-1 text-sm text-industrial-600">Distribucion acumulada del dia por indicador y por turno.</p>
+        <p className="mt-1 text-sm text-industrial-600">Distribucion acumulada del dia por indicador, turno y zona.</p>
         </div>
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="grid gap-5 lg:grid-cols-3">
           <ResumenBreakdownPanel
             title="Minutos por indicador"
             items={liveSummary.porIndicador}
@@ -1639,6 +1663,11 @@ function ReporteDiaView({
           <ResumenBreakdownPanel
             title="Minutos por turno"
             items={liveSummary.porTurno}
+            renderName={(item) => item.nombre}
+          />
+          <ResumenBreakdownPanel
+            title="Minutos por zona"
+            items={liveSummary.porZona}
             renderName={(item) => item.nombre}
           />
         </div>
@@ -1661,6 +1690,7 @@ function ReporteDiaView({
           }}
           reporteFecha={reporte.fecha_reporte}
           turnos={(configuration?.turnos ?? []).filter((turno) => Boolean(turno.activo))}
+          zonas={(configuration?.zonas ?? []).filter((zona) => Boolean(zona.activo))}
         />
       ) : null}
 
@@ -1692,7 +1722,8 @@ function DetencionModal({
   onClose,
   onSave,
   reporteFecha,
-  turnos
+  turnos,
+  zonas
 }: {
   detencion: Detencion | null;
   horarios: TurnoHorario[];
@@ -1702,12 +1733,14 @@ function DetencionModal({
   onSave: (input: DetencionInput, id?: number) => Promise<void>;
   reporteFecha: string;
   turnos: Turno[];
+  zonas: Zona[];
 }) {
   const defaultStart = detencion?.hora_inicio ?? currentTimeValue();
   const detectedTurno = getTurnoForReportTime(horarios, reporteFecha, defaultStart);
   const [form, setForm] = useState<DetencionFormState>({
     indicador_id: detencion ? String(detencion.indicador_id) : String(indicadores[0]?.id ?? ""),
     turno_id: detencion ? String(detencion.turno_id) : String(detectedTurno?.turno_id ?? turnos[0]?.id ?? ""),
+    zona_id: detencion ? String(detencion.zona_id) : String(zonas[0]?.id ?? ""),
     hora_inicio: defaultStart,
     hora_fin: detencion?.hora_fin ?? "",
     descripcion: detencion?.descripcion ?? "",
@@ -1723,7 +1756,7 @@ function DetencionModal({
     setForm(merged);
   }
 
-  const canSave = Boolean(form.indicador_id && form.turno_id && form.hora_inicio && form.descripcion.trim());
+  const canSave = Boolean(form.indicador_id && form.turno_id && form.zona_id && form.hora_inicio && form.descripcion.trim());
 
   return (
     <div className="app-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-industrial-900/40 px-4 py-6">
@@ -1754,6 +1787,12 @@ function DetencionModal({
             onChange={(turno_id) => updateForm({ turno_id })}
             options={turnos.map((turno) => ({ label: turno.nombre, value: String(turno.id) }))}
             value={form.turno_id}
+          />
+          <SelectInput
+            label="Zona"
+            onChange={(zona_id) => updateForm({ zona_id })}
+            options={zonas.map((zona) => ({ label: zona.nombre, value: String(zona.id) }))}
+            value={form.zona_id}
           />
           <TimeInput label="Hora fin" onChange={(hora_fin) => updateForm({ hora_fin })} value={form.hora_fin} />
           <label className="block text-sm font-medium text-industrial-700 md:col-span-2">
@@ -1786,6 +1825,7 @@ function DetencionModal({
                 {
                   indicador_id: Number(form.indicador_id),
                   turno_id: Number(form.turno_id),
+                  zona_id: Number(form.zona_id),
                   hora_inicio: form.hora_inicio,
                   hora_fin: form.hora_fin || null,
                   descripcion: form.descripcion,
@@ -2028,7 +2068,7 @@ function DetencionesList({
         <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-industrial-50 text-xs uppercase text-industrial-500">
             <tr>
-              {["Indicador", "Turno", "Hora inicio", "Hora fin", "Minutos", "Descripcion", "Plan de accion", "Estado", "Acciones"].map((column) => (
+              {["Indicador", "Turno", "Zona", "Hora inicio", "Hora fin", "Minutos", "Descripcion", "Plan de accion", "Estado", "Acciones"].map((column) => (
                 <th className="px-4 py-3 font-semibold" key={column}>{column}</th>
               ))}
             </tr>
@@ -2040,6 +2080,7 @@ function DetencionesList({
                   <IndicatorPill detencion={detencion} />
                 </td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.turno_nombre}</td>
+                <td className="px-4 py-3 text-industrial-700">{detencion.zona_nombre}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_inicio}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_fin ?? "-"}</td>
                 <td className="px-4 py-3 font-semibold text-industrial-900">{getDetencionLiveMinutes(detencion, reporteFecha, liveNow)}</td>
@@ -2069,6 +2110,7 @@ function DetencionesList({
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <SmallFact label="Turno" value={detencion.turno_nombre} />
+                <SmallFact label="Zona" value={detencion.zona_nombre} />
                 <SmallFact label="Minutos" value={String(getDetencionLiveMinutes(detencion, reporteFecha, liveNow))} />
                 <SmallFact label="Inicio" value={detencion.hora_inicio} />
                 <SmallFact label="Fin" value={detencion.hora_fin ?? "-"} />
@@ -2096,10 +2138,12 @@ function ConfigurationView({
   onCreateIndicador,
   onCreateLinea,
   onCreateTurno,
+  onCreateZona,
   onDeactivateHorario,
   onDeactivateIndicador,
   onDeactivateLinea,
   onDeactivateTurno,
+  onDeactivateZona,
   onDownloadBackup,
   onReload,
   onShowInactiveChange,
@@ -2107,8 +2151,10 @@ function ConfigurationView({
   onUpdateIndicador,
   onUpdateLinea,
   onUpdateTurno,
+  onUpdateZona,
   showInactive,
-  turnosActivos
+  turnosActivos,
+  zonasActivas
 }: {
   configuration: ConfigurationState | null;
   isSaving: boolean;
@@ -2116,10 +2162,12 @@ function ConfigurationView({
   onCreateIndicador: (input: IndicadorInput) => Promise<void>;
   onCreateLinea: (input: LineaInput) => Promise<void>;
   onCreateTurno: (input: TurnoInput) => Promise<void>;
+  onCreateZona: (input: ZonaInput) => Promise<void>;
   onDeactivateHorario: (id: number) => Promise<void>;
   onDeactivateIndicador: (id: number) => Promise<void>;
   onDeactivateLinea: (id: number) => Promise<void>;
   onDeactivateTurno: (id: number) => Promise<void>;
+  onDeactivateZona: (id: number) => Promise<void>;
   onDownloadBackup: () => Promise<void>;
   onReload: () => void;
   onShowInactiveChange: (value: boolean) => void;
@@ -2127,8 +2175,10 @@ function ConfigurationView({
   onUpdateIndicador: (id: number, input: IndicadorInput) => Promise<void>;
   onUpdateLinea: (id: number, input: LineaInput) => Promise<void>;
   onUpdateTurno: (id: number, input: TurnoInput) => Promise<void>;
+  onUpdateZona: (id: number, input: ZonaInput) => Promise<void>;
   showInactive: boolean;
   turnosActivos: Turno[];
+  zonasActivas: Zona[];
 }) {
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
@@ -2199,6 +2249,13 @@ function ConfigurationView({
           onDeactivate={onDeactivateTurno}
           onUpdate={onUpdateTurno}
           turnos={configuration?.turnos ?? []}
+        />
+        <ZonasSection
+          disabled={isSaving}
+          onCreate={onCreateZona}
+          onDeactivate={onDeactivateZona}
+          onUpdate={onUpdateZona}
+          zonas={configuration?.zonas ?? zonasActivas}
         />
         <HorariosSection
           disabled={isSaving}
@@ -2404,6 +2461,65 @@ function TurnosSection({
                 <DeactivateButton disabled={disabled} onClick={() => onDeactivate(turno.id)} />
               ) : (
                 <ReactivateButton disabled={disabled} onClick={() => onUpdate(turno.id, { codigo: turno.codigo, nombre: turno.nombre, activo: true })} />
+              )}
+            </ActionCell>
+          </tr>
+        ))}
+      </RecordsTable>
+    </ConfigPanel>
+  );
+}
+
+function ZonasSection({
+  disabled,
+  onCreate,
+  onDeactivate,
+  onUpdate,
+  zonas
+}: {
+  disabled: boolean;
+  onCreate: (input: ZonaInput) => Promise<void>;
+  onDeactivate: (id: number) => Promise<void>;
+  onUpdate: (id: number, input: ZonaInput) => Promise<void>;
+  zonas: Zona[];
+}) {
+  const [form, setForm] = useState<ZonaInput>(emptyZona);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const submit = async () => {
+    if (!form.nombre.trim()) return;
+    if (editingId) {
+      await onUpdate(editingId, form);
+    } else {
+      await onCreate(form);
+    }
+    setForm(emptyZona);
+    setEditingId(null);
+  };
+
+  return (
+    <ConfigPanel title="Zonas">
+      <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
+        <TextInput label="Nombre de zona" onChange={(nombre) => setForm({ ...form, nombre })} value={form.nombre} />
+        <ActiveSelect active={form.activo} label="Estado" onChange={(activo) => setForm({ ...form, activo })} />
+        <SaveButton disabled={disabled || !form.nombre.trim()} editing={Boolean(editingId)} onClick={submit} />
+      </div>
+      <RecordsTable columns={["Zona", "Estado", "Acciones"]}>
+        {zonas.map((zona) => (
+          <tr className="block border-t border-industrial-100 p-4 md:table-row md:p-0" key={zona.id}>
+            <Cell label="Zona">{zona.nombre}</Cell>
+            <Cell label="Estado"><StatusBadge active={Boolean(zona.activo)} /></Cell>
+            <ActionCell>
+              <EditButton
+                onClick={() => {
+                  setEditingId(zona.id);
+                  setForm({ nombre: zona.nombre, activo: Boolean(zona.activo) });
+                }}
+              />
+              {zona.activo ? (
+                <DeactivateButton disabled={disabled} onClick={() => onDeactivate(zona.id)} />
+              ) : (
+                <ReactivateButton disabled={disabled} onClick={() => onUpdate(zona.id, { nombre: zona.nombre, activo: true })} />
               )}
             </ActionCell>
           </tr>
@@ -3100,9 +3216,17 @@ function buildLiveSummary(
       nombre: turno.nombre,
       minutos: 0
     }));
+  const zonaBase = backendResumen?.total_por_zona ??
+    (configuration?.zonas ?? []).map((zona) => ({
+      id: zona.id,
+      codigo: "",
+      nombre: zona.nombre,
+      minutos: 0
+    }));
 
   const porIndicador = new Map(indicadorBase.map((item) => [item.id, { ...item, minutos: 0 }]));
   const porTurno = new Map(turnoBase.map((item) => [item.id, { ...item, minutos: 0 }]));
+  const porZona = new Map(zonaBase.map((item) => [item.id, { ...item, minutos: 0 }]));
   let totalMinutos = 0;
   let abiertas = 0;
 
@@ -3120,6 +3244,15 @@ function buildLiveSummary(
     };
     indicador.minutos += minutos;
     porIndicador.set(detencion.indicador_id, indicador);
+
+    const zona = porZona.get(detencion.zona_id) ?? {
+      id: detencion.zona_id,
+      codigo: "",
+      nombre: detencion.zona_nombre,
+      minutos: 0
+    };
+    zona.minutos += minutos;
+    porZona.set(detencion.zona_id, zona);
 
     const minutosPorTurno = splitDetencionMinutesByTurno(detencion, reporteFecha, liveNow, configuration?.horarios ?? []);
     if (minutosPorTurno.size === 0) {
@@ -3147,7 +3280,8 @@ function buildLiveSummary(
     totalDetenciones: detenciones.length,
     detencionesAbiertas: abiertas,
     porIndicador: Array.from(porIndicador.values()).sort((a, b) => b.minutos - a.minutos || a.codigo.localeCompare(b.codigo)),
-    porTurno: Array.from(porTurno.values())
+    porTurno: Array.from(porTurno.values()),
+    porZona: Array.from(porZona.values()).sort((a, b) => b.minutos - a.minutos || a.nombre.localeCompare(b.nombre))
   };
 }
 

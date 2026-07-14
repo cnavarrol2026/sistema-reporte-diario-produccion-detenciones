@@ -4,20 +4,24 @@ import {
   createLinea,
   createTurno,
   createTurnoHorario,
+  createZona,
   deactivateIndicador,
   deactivateLinea,
   deactivateTurno,
   deactivateTurnoHorario,
+  deactivateZona,
   getIndicadores,
   getLineas,
   getTurnoHorarios,
   getTurnos,
+  getZonas,
   updateIndicador,
   updateLinea,
   updateTurno,
-  updateTurnoHorario
+  updateTurnoHorario,
+  updateZona
 } from "../services/configurationService.js";
-import type { IndicadorInput, LineaInput, TurnoHorarioInput, TurnoInput } from "../types/configuration.js";
+import type { IndicadorInput, LineaInput, TurnoHorarioInput, TurnoInput, ZonaInput } from "../types/configuration.js";
 
 function shouldIncludeInactive(request: Request) {
   return request.query.incluirInactivas === "true";
@@ -78,6 +82,13 @@ function parseIndicadorInput(body: Record<string, unknown>): IndicadorInput {
 function parseTurnoInput(body: Record<string, unknown>): TurnoInput {
   return {
     codigo: requiredText(body.codigo, "codigo"),
+    nombre: requiredText(body.nombre, "nombre"),
+    activo: optionalBoolean(body.activo)
+  };
+}
+
+function parseZonaInput(body: Record<string, unknown>): ZonaInput {
+  return {
     nombre: requiredText(body.nombre, "nombre"),
     activo: optionalBoolean(body.activo)
   };
@@ -153,6 +164,25 @@ export async function deleteTurnoController(request: Request, response: Response
   response.json({
     message: "Registro desactivado correctamente",
     data: await deactivateTurno(parseId(request))
+  });
+}
+
+export async function listZonas(request: Request, response: Response) {
+  response.json(await getZonas(shouldIncludeInactive(request)));
+}
+
+export async function createZonaController(request: Request, response: Response) {
+  response.status(201).json(await createZona(parseZonaInput(request.body)));
+}
+
+export async function updateZonaController(request: Request, response: Response) {
+  response.json(await updateZona(parseId(request), parseZonaInput(request.body)));
+}
+
+export async function deleteZonaController(request: Request, response: Response) {
+  response.json({
+    message: "Registro desactivado correctamente",
+    data: await deactivateZona(parseId(request))
   });
 }
 

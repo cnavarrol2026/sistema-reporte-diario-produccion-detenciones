@@ -54,6 +54,7 @@ export interface ReporteResumen {
   cumplimiento: number | null;
   total_por_indicador: ReporteResumenItem[];
   total_por_turno: ReporteResumenItem[];
+  total_por_zona: ReporteResumenItem[];
   opinona_planificada: number | null;
   opinona_real: number | null;
   producciones_programadas: number | null;

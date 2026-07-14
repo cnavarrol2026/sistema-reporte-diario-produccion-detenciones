@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS turnos (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS zonas (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  nombre VARCHAR(120) NOT NULL UNIQUE,
+  activo TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS turno_horarios (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   turno_id INT UNSIGNED NOT NULL,
@@ -85,6 +93,7 @@ CREATE TABLE IF NOT EXISTS detenciones (
   reporte_id BIGINT UNSIGNED NOT NULL,
   indicador_id INT UNSIGNED NOT NULL,
   turno_id INT UNSIGNED NOT NULL,
+  zona_id INT UNSIGNED NOT NULL,
   hora_inicio DATETIME NOT NULL,
   hora_fin DATETIME NULL,
   descripcion TEXT NOT NULL,
@@ -104,9 +113,14 @@ CREATE TABLE IF NOT EXISTS detenciones (
     FOREIGN KEY (turno_id) REFERENCES turnos(id)
     ON UPDATE CASCADE
     ON DELETE RESTRICT,
+  CONSTRAINT fk_detenciones_zona
+    FOREIGN KEY (zona_id) REFERENCES zonas(id)
+    ON UPDATE CASCADE
+    ON DELETE RESTRICT,
   INDEX idx_detenciones_reporte (reporte_id),
   INDEX idx_detenciones_indicador (indicador_id),
-  INDEX idx_detenciones_turno (turno_id)
+  INDEX idx_detenciones_turno (turno_id),
+  INDEX idx_detenciones_zona (zona_id)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS cajas_retenidas_rechazadas (

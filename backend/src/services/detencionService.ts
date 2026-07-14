@@ -52,6 +52,8 @@ function detencionSelectSql(whereClause: string) {
     d.turno_id,
     t.codigo AS turno_codigo,
     t.nombre AS turno_nombre,
+    d.zona_id,
+    z.nombre AS zona_nombre,
     DATE_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
     DATE_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
     d.descripcion,
@@ -67,6 +69,7 @@ function detencionSelectSql(whereClause: string) {
   FROM detenciones d
   INNER JOIN indicadores i ON i.id = d.indicador_id
   INNER JOIN turnos t ON t.id = d.turno_id
+  INNER JOIN zonas z ON z.id = d.zona_id
   ${whereClause}`;
 }
 
@@ -106,6 +109,16 @@ async function assertActiveTurno(turnoId: number) {
   }
 }
 
+async function assertActiveZona(zonaId: number) {
+  const [rows] = await pool.query<(RowDataPacket & { id: number })[]>(
+    "SELECT id FROM zonas WHERE id = ? AND activo = 1 LIMIT 1",
+    [zonaId]
+  );
+  if (!rows[0]) {
+    throw Object.assign(new Error("La zona debe existir y estar activa"), { statusCode: 400 });
+  }
+}
+
 function buildDateTimes(fechaReporte: string, input: DetencionInput) {
   const inicio = combineReportDateAndTime(fechaReporte, input.hora_inicio);
   let fin: Date | null = null;
@@ -135,16 +148,18 @@ export async function createDetencion(reporteId: number, input: DetencionInput) 
   assertOpenReporte(reporte.estado);
   await assertActiveIndicador(input.indicador_id);
   await assertActiveTurno(input.turno_id);
+  await assertActiveZona(input.zona_id);
 
   const { inicio, fin } = buildDateTimes(reporte.fecha_reporte, input);
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO detenciones
-      (reporte_id, indicador_id, turno_id, hora_inicio, hora_fin, descripcion, plan_accion, minutos_finales)
-    VALUES (?, ?, ?, ?, ?, ?, ?, NULL)`,
+      (reporte_id, indicador_id, turno_id, zona_id, hora_inicio, hora_fin, descripcion, plan_accion, minutos_finales)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
     [
       reporteId,
       input.indicador_id,
       input.turno_id,
+      input.zona_id,
       formatDateTime(inicio),
       fin ? formatDateTime(fin) : null,
       input.descripcion.trim(),
@@ -168,15 +183,17 @@ export async function updateDetencion(id: number, input: DetencionInput) {
   assertOpenReporte(reporte.estado);
   await assertActiveIndicador(input.indicador_id);
   await assertActiveTurno(input.turno_id);
+  await assertActiveZona(input.zona_id);
 
   const { inicio, fin } = buildDateTimes(reporte.fecha_reporte, input);
   await pool.execute(
     `UPDATE detenciones
-    SET indicador_id = ?, turno_id = ?, hora_inicio = ?, hora_fin = ?, descripcion = ?, plan_accion = ?, minutos_finales = NULL
+    SET indicador_id = ?, turno_id = ?, zona_id = ?, hora_inicio = ?, hora_fin = ?, descripcion = ?, plan_accion = ?, minutos_finales = NULL
     WHERE id = ?`,
     [
       input.indicador_id,
       input.turno_id,
+      input.zona_id,
       formatDateTime(inicio),
       fin ? formatDateTime(fin) : null,
       input.descripcion.trim(),
