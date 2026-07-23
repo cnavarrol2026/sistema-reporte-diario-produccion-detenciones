@@ -270,6 +270,7 @@ export interface Detencion {
   zona_id: number;
   zona_nombre: string;
   hora_inicio: string;
+  hora_inicio_orden?: string;
   hora_fin: string | null;
   descripcion: string;
   plan_accion: string | null;

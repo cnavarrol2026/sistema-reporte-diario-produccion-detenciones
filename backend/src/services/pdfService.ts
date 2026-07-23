@@ -44,6 +44,37 @@ function percentValue(value: number | string | null | undefined) {
   return value === null || typeof value === "undefined" ? "N/A" : `${value}%`;
 }
 
+function parseDateTimeValue(value: string | null | undefined) {
+  if (!value) return 0;
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function getDetencionMinutes(detencion: { minutos_finales: number | null; minutos_calculados: number }) {
+  return Number(detencion.minutos_finales ?? detencion.minutos_calculados ?? 0);
+}
+
+function sortDetencionesForPdf<T extends { id: number; hora_inicio_orden?: string }>(detenciones: T[]) {
+  return [...detenciones].sort((a, b) => parseDateTimeValue(a.hora_inicio_orden) - parseDateTimeValue(b.hora_inicio_orden) || a.id - b.id);
+}
+
+function getTopDetencionRanks<T extends { id: number; minutos_finales: number | null; minutos_calculados: number }>(detenciones: T[]) {
+  return new Map(
+    [...detenciones]
+      .map((detencion) => ({ detencion, minutos: getDetencionMinutes(detencion) }))
+      .filter((item) => item.minutos > 0)
+      .sort((a, b) => b.minutos - a.minutos || a.detencion.id - b.detencion.id)
+      .slice(0, 2)
+      .map((item, index) => [item.detencion.id, index + 1])
+  );
+}
+
+function topDetencionPrefix(rank: number | undefined) {
+  if (rank === 1) return "[TOP 1] ";
+  if (rank === 2) return "[TOP 2] ";
+  return "";
+}
+
 function wrapText(value: string | number | null | undefined, maxChars: number, maxLines = 2) {
   const words = sanitizeText(value).split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -392,6 +423,8 @@ export async function generateReportePdfBuffer(reporteId: number) {
     getDetencionesByReporteId(reporteId),
     getCajasByReporteId(reporteId)
   ]);
+  const orderedDetenciones = sortDetencionesForPdf(detenciones);
+  const topRanks = getTopDetencionRanks(orderedDetenciones);
 
   const pdf = new SimplePdf();
 
@@ -430,14 +463,14 @@ export async function generateReportePdfBuffer(reporteId: number) {
       { label: "Descripcion", width: 190, value: (row) => row.descripcion },
       { label: "Plan accion", width: 95, value: (row) => row.plan }
     ],
-    detenciones.map((detencion) => ({
+    orderedDetenciones.map((detencion) => ({
       indicador: detencion.indicador_codigo,
       turno: detencion.turno_codigo,
       zona: detencion.zona_nombre,
       inicio: detencion.hora_inicio,
       fin: detencion.hora_fin ?? "-",
-      minutos: detencion.minutos_finales ?? detencion.minutos_calculados,
-      descripcion: detencion.descripcion,
+      minutos: getDetencionMinutes(detencion),
+      descripcion: `${topDetencionPrefix(topRanks.get(detencion.id))}${detencion.descripcion}`,
       plan: detencion.plan_accion ?? "-"
     })),
     { rowHeight: 26, fontSize: 6.2, maxLines: 2 }

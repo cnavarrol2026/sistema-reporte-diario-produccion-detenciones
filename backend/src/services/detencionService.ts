@@ -34,6 +34,22 @@ function combineReportDateAndTime(fechaReporte: string, hora: string) {
   return parseDateTime(`${fechaReporte} ${hora}:00`);
 }
 
+function timeToMinutes(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+async function isAfterMidnightForCrossingShift(turnoId: number, hora: string) {
+  const [rows] = await pool.query<(RowDataPacket & { hora_fin: string })[]>(
+    `SELECT TIME_FORMAT(hora_fin, '%H:%i') AS hora_fin
+    FROM turno_horarios
+    WHERE turno_id = ? AND activo = 1 AND cruza_medianoche = 1`,
+    [turnoId]
+  );
+  const currentMinutes = timeToMinutes(hora);
+  return rows.some((row) => currentMinutes < timeToMinutes(row.hora_fin));
+}
+
 export function calculateMinutes(horaInicio: string | Date, horaFin?: string | Date | null) {
   const start = typeof horaInicio === "string" ? parseDateTime(horaInicio) : horaInicio;
   const end = horaFin ? (typeof horaFin === "string" ? parseDateTime(horaFin) : horaFin) : new Date();
@@ -55,6 +71,22 @@ function detencionSelectSql(whereClause: string) {
     d.zona_id,
     z.nombre AS zona_nombre,
     DATE_FORMAT(d.hora_inicio, '%H:%i') AS hora_inicio,
+    DATE_FORMAT(
+      CASE
+        WHEN DATE(d.hora_inicio) = (SELECT r.fecha_reporte FROM reportes r WHERE r.id = d.reporte_id)
+          AND EXISTS (
+            SELECT 1
+            FROM turno_horarios th
+            WHERE th.turno_id = d.turno_id
+              AND th.activo = 1
+              AND th.cruza_medianoche = 1
+              AND TIME(d.hora_inicio) < th.hora_fin
+          )
+        THEN DATE_ADD(d.hora_inicio, INTERVAL 1 DAY)
+        ELSE d.hora_inicio
+      END,
+      '%Y-%m-%d %H:%i:%s'
+    ) AS hora_inicio_orden,
     DATE_FORMAT(d.hora_fin, '%H:%i') AS hora_fin,
     d.descripcion,
     d.plan_accion,
@@ -75,7 +107,7 @@ function detencionSelectSql(whereClause: string) {
 
 export async function getDetencionesByReporteId(reporteId: number) {
   const [rows] = await pool.query<DetencionRow[]>(
-    `${detencionSelectSql("WHERE d.reporte_id = ?")} ORDER BY d.hora_inicio ASC, d.id ASC`,
+    `${detencionSelectSql("WHERE d.reporte_id = ?")} ORDER BY hora_inicio_orden ASC, d.id ASC`,
     [reporteId]
   );
   return rows.map((row) => ({
@@ -119,12 +151,19 @@ async function assertActiveZona(zonaId: number) {
   }
 }
 
-function buildDateTimes(fechaReporte: string, input: DetencionInput) {
+async function buildDateTimes(fechaReporte: string, input: DetencionInput) {
   const inicio = combineReportDateAndTime(fechaReporte, input.hora_inicio);
   let fin: Date | null = null;
 
+  if (await isAfterMidnightForCrossingShift(input.turno_id, input.hora_inicio)) {
+    inicio.setDate(inicio.getDate() + 1);
+  }
+
   if (input.hora_fin) {
     fin = combineReportDateAndTime(fechaReporte, input.hora_fin);
+    if (await isAfterMidnightForCrossingShift(input.turno_id, input.hora_fin)) {
+      fin.setDate(fin.getDate() + 1);
+    }
     if (fin.getTime() < inicio.getTime()) {
       fin.setDate(fin.getDate() + 1);
     }
@@ -150,7 +189,7 @@ export async function createDetencion(reporteId: number, input: DetencionInput) 
   await assertActiveTurno(input.turno_id);
   await assertActiveZona(input.zona_id);
 
-  const { inicio, fin } = buildDateTimes(reporte.fecha_reporte, input);
+  const { inicio, fin } = await buildDateTimes(reporte.fecha_reporte, input);
   const [result] = await pool.execute<ResultSetHeader>(
     `INSERT INTO detenciones
       (reporte_id, indicador_id, turno_id, zona_id, hora_inicio, hora_fin, descripcion, plan_accion, minutos_finales)
@@ -185,7 +224,7 @@ export async function updateDetencion(id: number, input: DetencionInput) {
   await assertActiveTurno(input.turno_id);
   await assertActiveZona(input.zona_id);
 
-  const { inicio, fin } = buildDateTimes(reporte.fecha_reporte, input);
+  const { inicio, fin } = await buildDateTimes(reporte.fecha_reporte, input);
   await pool.execute(
     `UPDATE detenciones
     SET indicador_id = ?, turno_id = ?, zona_id = ?, hora_inicio = ?, hora_fin = ?, descripcion = ?, plan_accion = ?, minutos_finales = NULL

@@ -1158,7 +1158,7 @@ function InformeDetalleView({
         {detenciones.length === 0 ? (
           <p className="mt-4 rounded-md bg-industrial-50 p-4 text-sm text-industrial-600">Este reporte no registro detenciones.</p>
         ) : (
-          <InformeDetencionesList detenciones={detenciones} />
+          <InformeDetencionesList detenciones={detenciones} reporteFecha={reporte.fecha_reporte} />
         )}
       </article>
 
@@ -1205,7 +1205,10 @@ function InformeDetalleView({
   );
 }
 
-function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
+function InformeDetencionesList({ detenciones, reporteFecha }: { detenciones: Detencion[]; reporteFecha?: string }) {
+  const orderedDetenciones = sortDetencionesCronologicamente(detenciones, reporteFecha, new Date());
+  const topRanks = getTopDetenciones(orderedDetenciones, (detencion) => Number(detencion.minutos_finales ?? detencion.minutos_calculados ?? 0));
+
   return (
     <div className="mt-5">
       <div className="hidden overflow-hidden rounded-lg border border-industrial-100 md:block">
@@ -1218,28 +1221,39 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-industrial-100">
-            {detenciones.map((detencion) => (
-              <tr key={detencion.id}>
+            {orderedDetenciones.map((detencion) => {
+              const rank = topRanks.get(detencion.id);
+              return (
+              <tr className={rank ? "bg-amber-50/70" : ""} key={detencion.id}>
                 <td className="px-4 py-3"><IndicatorPill detencion={detencion} /></td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.turno_nombre}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.zona_nombre}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_inicio}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_fin ?? "-"}</td>
-                <td className="px-4 py-3 font-semibold text-industrial-900">{detencion.minutos_finales ?? detencion.minutos_calculados}</td>
+                <td className="px-4 py-3 font-semibold text-industrial-900">
+                  <div>{detencion.minutos_finales ?? detencion.minutos_calculados}</div>
+                  <TopDetencionBadge rank={rank} />
+                </td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.descripcion}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.plan_accion ?? "-"}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <div className="space-y-3 md:hidden">
-        {detenciones.map((detencion) => (
-          <article className="rounded-lg border border-industrial-100 bg-white p-4 shadow-sm" key={detencion.id}>
+        {orderedDetenciones.map((detencion) => {
+          const rank = topRanks.get(detencion.id);
+          return (
+          <article className={`rounded-lg border p-4 shadow-sm ${rank ? "border-amber-200 bg-amber-50/80" : "border-industrial-100 bg-white"}`} key={detencion.id}>
             <div className="flex items-start justify-between gap-3">
               <IndicatorPill detencion={detencion} />
-              <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Cerrada</span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">Cerrada</span>
+                <TopDetencionBadge rank={rank} />
+              </div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <SmallFact label="Turno" value={detencion.turno_nombre} />
@@ -1253,7 +1267,8 @@ function InformeDetencionesList({ detenciones }: { detenciones: Detencion[] }) {
             <p className="mt-3 text-sm font-semibold text-industrial-900">Plan de accion</p>
             <p className="mt-1 text-sm text-industrial-700">{detencion.plan_accion ?? "-"}</p>
           </article>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -2070,6 +2085,9 @@ function DetencionesList({
     return <p className="mt-5 rounded-md bg-industrial-50 p-4 text-sm text-industrial-600">No hay detenciones registradas.</p>;
   }
 
+  const orderedDetenciones = sortDetencionesCronologicamente(detenciones, reporteFecha, liveNow);
+  const topRanks = getTopDetenciones(orderedDetenciones, (detencion) => getDetencionLiveMinutes(detencion, reporteFecha, liveNow));
+
   return (
     <div className="mt-5">
       <div className="hidden overflow-hidden rounded-lg border border-industrial-100 md:block">
@@ -2082,8 +2100,11 @@ function DetencionesList({
             </tr>
           </thead>
           <tbody className="divide-y divide-industrial-100">
-            {detenciones.map((detencion) => (
-              <tr className={isOpenNearShiftEnd(detencion, horarios, liveNow) ? "bg-red-50" : ""} key={detencion.id}>
+            {orderedDetenciones.map((detencion) => {
+              const nearEnd = isOpenNearShiftEnd(detencion, horarios, liveNow);
+              const rank = topRanks.get(detencion.id);
+              return (
+              <tr className={nearEnd ? "bg-red-50" : rank ? "bg-amber-50/70" : ""} key={detencion.id}>
                 <td className="px-4 py-3">
                   <IndicatorPill detencion={detencion} />
                 </td>
@@ -2091,10 +2112,13 @@ function DetencionesList({
                 <td className="px-4 py-3 text-industrial-700">{detencion.zona_nombre}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_inicio}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.hora_fin ?? "-"}</td>
-                <td className="px-4 py-3 font-semibold text-industrial-900">{getDetencionLiveMinutes(detencion, reporteFecha, liveNow)}</td>
+                <td className="px-4 py-3 font-semibold text-industrial-900">
+                  <div>{getDetencionLiveMinutes(detencion, reporteFecha, liveNow)}</div>
+                  <TopDetencionBadge rank={rank} />
+                </td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.descripcion}</td>
                 <td className="px-4 py-3 text-industrial-700">{detencion.plan_accion ?? "-"}</td>
-                <td className="px-4 py-3"><DetencionStatus detencion={detencion} nearEnd={isOpenNearShiftEnd(detencion, horarios, liveNow)} /></td>
+                <td className="px-4 py-3"><DetencionStatus detencion={detencion} nearEnd={nearEnd} /></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
                     <EditButton onClick={() => onEdit(detencion)} />
@@ -2102,19 +2126,24 @@ function DetencionesList({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       <div className="space-y-3 md:hidden">
-        {detenciones.map((detencion) => {
+        {orderedDetenciones.map((detencion) => {
           const nearEnd = isOpenNearShiftEnd(detencion, horarios, liveNow);
+          const rank = topRanks.get(detencion.id);
           return (
-            <article className={`rounded-lg border p-4 shadow-sm ${nearEnd ? "border-red-200 bg-red-50" : "border-industrial-100 bg-white"}`} key={detencion.id}>
+            <article className={`rounded-lg border p-4 shadow-sm ${nearEnd ? "border-red-200 bg-red-50" : rank ? "border-amber-200 bg-amber-50/80" : "border-industrial-100 bg-white"}`} key={detencion.id}>
               <div className="flex items-start justify-between gap-3">
                 <IndicatorPill detencion={detencion} />
-                <DetencionStatus detencion={detencion} nearEnd={nearEnd} />
+                <div className="flex flex-col items-end gap-1">
+                  <DetencionStatus detencion={detencion} nearEnd={nearEnd} />
+                  <TopDetencionBadge rank={rank} />
+                </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <SmallFact label="Turno" value={detencion.turno_nombre} />
@@ -3468,6 +3497,58 @@ function getDetencionLiveMinutes(detencion: Detencion, reporteFecha: string | un
   const interval = getDetencionInterval(detencion, reporteFecha, liveNow);
   if (!interval) return detencion.minutos_calculados;
   return minutesBetween(interval.start, interval.end);
+}
+
+function parseBackendDateTime(value: string) {
+  const parsed = new Date(value.replace(" ", "T"));
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getDetencionSortTime(detencion: Detencion, reporteFecha: string | undefined, liveNow: Date) {
+  if (detencion.hora_inicio_orden) {
+    const orderedStart = parseBackendDateTime(detencion.hora_inicio_orden);
+    if (orderedStart) return orderedStart.getTime();
+  }
+
+  const interval = getDetencionInterval(detencion, reporteFecha, liveNow);
+  if (interval) return interval.start.getTime();
+  return detencion.id;
+}
+
+function sortDetencionesCronologicamente(detenciones: Detencion[], reporteFecha: string | undefined, liveNow: Date) {
+  return [...detenciones].sort((a, b) => {
+    const byStart = getDetencionSortTime(a, reporteFecha, liveNow) - getDetencionSortTime(b, reporteFecha, liveNow);
+    return byStart || a.id - b.id;
+  });
+}
+
+function getTopDetenciones(
+  detenciones: Detencion[],
+  getMinutes: (detencion: Detencion) => number
+) {
+  const topDetenciones = [...detenciones]
+    .map((detencion) => ({ detencion, minutes: getMinutes(detencion) }))
+    .filter((item) => item.minutes > 0)
+    .sort((a, b) => b.minutes - a.minutes || a.detencion.id - b.detencion.id)
+    .slice(0, 2);
+
+  return new Map(topDetenciones.map((item, index) => [item.detencion.id, index + 1]));
+}
+
+function topDetencionLabel(rank?: number) {
+  if (rank === 1) return "Mayor detencion";
+  if (rank === 2) return "2da mayor detencion";
+  return "";
+}
+
+function TopDetencionBadge({ rank }: { rank?: number }) {
+  const label = topDetencionLabel(rank);
+  if (!label) return null;
+  return (
+    <span className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-normal text-amber-800">
+      {label}
+    </span>
+  );
 }
 
 function getDetencionInterval(detencion: Detencion, reporteFecha: string | undefined, liveNow: Date) {
